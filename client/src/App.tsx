@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
+import MainLayout from './layouts/MainLayout'
 
 import Home from './pages/Home'
 import Browse from './pages/Browse'
@@ -16,15 +17,12 @@ import SellerDashboard from './pages/SellerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import NotFound from './pages/NotFound'
 
-function ProtectedRoute({ children, requiredRole }: {
+function ProtectedRoute({ children }: {
   children: React.ReactNode
-  requiredRole?: 'buyer' | 'seller' | 'admin'
 }) {
   const { user, loading } = useAuth()
-
   if (loading) return <div>Loading...</div>
   if (!user) return <Navigate to="/login" replace />
-
   return <>{children}</>
 }
 
@@ -33,36 +31,36 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* Public routes */}
-        <Route path="/" element={<Home />} />
-        <Route path="/browse" element={<Browse />} />
-        <Route path="/item/:id" element={<ItemDetail />} />
-        <Route path="/seller/:id" element={<SellerProfile />} />
-        <Route path="/guides" element={<Guides />} />
-        <Route path="/guides/:slug" element={<GuideDetail />} />
-        <Route path="/database" element={<Database />} />
-        <Route path="/database/:id" element={<DatabaseItemDetail />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/" element={<MainLayout><Home /></MainLayout>} />
+        <Route path="/browse" element={<MainLayout><Browse /></MainLayout>} />
+        <Route path="/item/:id" element={<MainLayout><ItemDetail /></MainLayout>} />
+        <Route path="/seller/:id" element={<MainLayout><SellerProfile /></MainLayout>} />
+        <Route path="/guides" element={<MainLayout><Guides /></MainLayout>} />
+        <Route path="/guides/:slug" element={<MainLayout><GuideDetail /></MainLayout>} />
+        <Route path="/database" element={<MainLayout><Database /></MainLayout>} />
+        <Route path="/database/:id" element={<MainLayout><DatabaseItemDetail /></MainLayout>} />
+        <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
+        <Route path="/register" element={<MainLayout><Register /></MainLayout>} />
 
         {/* Protected routes */}
         <Route path="/dashboard/buyer" element={
           <ProtectedRoute>
-            <BuyerDashboard />
+            <MainLayout><BuyerDashboard /></MainLayout>
           </ProtectedRoute>
         } />
         <Route path="/dashboard/seller" element={
-          <ProtectedRoute requiredRole="seller">
-            <SellerDashboard />
+          <ProtectedRoute>
+            <MainLayout><SellerDashboard /></MainLayout>
           </ProtectedRoute>
         } />
         <Route path="/dashboard/admin" element={
-          <ProtectedRoute requiredRole="admin">
-            <AdminDashboard />
+          <ProtectedRoute>
+            <MainLayout><AdminDashboard /></MainLayout>
           </ProtectedRoute>
         } />
 
         {/* Fallback */}
-        <Route path="*" element={<NotFound />} />
+        <Route path="*" element={<MainLayout><NotFound /></MainLayout>} />
       </Routes>
     </BrowserRouter>
   )
