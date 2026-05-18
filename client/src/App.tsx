@@ -16,13 +16,39 @@ import BuyerDashboard from './pages/BuyerDashboard'
 import SellerDashboard from './pages/SellerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import NotFound from './pages/NotFound'
+import { useProfile } from './hooks/useProfile'
 
-function ProtectedRoute({ children }: {
+function ProtectedRoute({ children, requiredRole }: {
   children: React.ReactNode
+  requiredRole?: 'buyer' | 'seller' | 'admin'
 }) {
-  const { user, loading } = useAuth()
-  if (loading) return <div>Loading...</div>
+  const { user, loading: authLoading } = useAuth()
+  const { profile, loading: profileLoading } = useProfile()
+
+  if (authLoading || profileLoading) {
+    return (
+      <div style={{
+        minHeight: '80vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--color-text-secondary)',
+        fontSize: '1rem',
+      }}>
+        Loading...
+      </div>
+    )
+  }
+
   if (!user) return <Navigate to="/login" replace />
+
+  if (requiredRole && profile?.role !== requiredRole) {
+    // Redirect to their correct dashboard instead of a blank page
+    if (profile?.role === 'admin') return <Navigate to="/dashboard/admin" replace />
+    if (profile?.role === 'seller') return <Navigate to="/dashboard/seller" replace />
+    return <Navigate to="/dashboard/buyer" replace />
+  }
+
   return <>{children}</>
 }
 
@@ -44,17 +70,17 @@ export default function App() {
 
         {/* Protected routes */}
         <Route path="/dashboard/buyer" element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="buyer">
             <MainLayout><BuyerDashboard /></MainLayout>
           </ProtectedRoute>
         } />
         <Route path="/dashboard/seller" element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="seller">
             <MainLayout><SellerDashboard /></MainLayout>
           </ProtectedRoute>
         } />
         <Route path="/dashboard/admin" element={
-          <ProtectedRoute>
+          <ProtectedRoute requiredRole="admin">
             <MainLayout><AdminDashboard /></MainLayout>
           </ProtectedRoute>
         } />

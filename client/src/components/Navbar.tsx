@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
+import { useProfile } from '../hooks/useProfile'
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { profile } = useProfile()
   const navigate = useNavigate()
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
@@ -13,6 +15,16 @@ export default function Navbar() {
     await signOut()
     navigate('/')
   }
+
+  const dashboardPath =
+    profile?.role === 'admin' ? '/dashboard/admin' :
+    profile?.role === 'seller' ? '/dashboard/seller' :
+    '/dashboard/buyer'
+
+  const dropdownLinks = [
+    { label: 'Dashboard', path: dashboardPath },
+    { label: 'Settings', path: '/settings' },
+  ]
 
   return (
     <nav style={{
@@ -143,7 +155,7 @@ export default function Navbar() {
                   fontWeight: 500,
                 }}
               >
-                👤 {user.email?.split('@')[0]}  ▾
+                👤 {user.email?.split('@')[0]} ▾
               </button>
 
               {dropdownOpen && (
@@ -159,10 +171,7 @@ export default function Navbar() {
                   overflow: 'hidden',
                   zIndex: 100,
                 }}>
-                  {[
-                    { label: 'Dashboard', path: '/dashboard/buyer' },
-                    { label: 'Settings', path: '/settings' },
-                  ].map(item => (
+                  {dropdownLinks.map(item => (
                     <Link
                       key={item.label}
                       to={item.path}
