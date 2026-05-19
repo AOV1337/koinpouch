@@ -71,17 +71,17 @@ export default function App() {
         {/* Protected routes */}
         <Route path="/dashboard/buyer" element={
           <ProtectedRoute requiredRole="buyer">
-            <MainLayout><BuyerDashboard /></MainLayout>
+            <BuyerDashboard />
           </ProtectedRoute>
         } />
         <Route path="/dashboard/seller" element={
           <ProtectedRoute requiredRole="seller">
-            <MainLayout><SellerDashboard /></MainLayout>
+            <SellerDashboard />
           </ProtectedRoute>
         } />
         <Route path="/dashboard/admin" element={
           <ProtectedRoute requiredRole="admin">
-            <MainLayout><AdminDashboard /></MainLayout>
+            <AdminDashboard />
           </ProtectedRoute>
         } />
 

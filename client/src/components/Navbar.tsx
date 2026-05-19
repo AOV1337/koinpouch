@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
@@ -7,19 +7,31 @@ import { useProfile } from '../hooks/useProfile'
 export default function Navbar() {
   const { user, signOut } = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const { profile } = useProfile()
+  const { profile, loading: profileLoading } = useProfile()
   const navigate = useNavigate()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const handleSignOut = async () => {
     await signOut()
     navigate('/')
   }
 
-  const dashboardPath =
-    profile?.role === 'admin' ? '/dashboard/admin' :
-    profile?.role === 'seller' ? '/dashboard/seller' :
-    '/dashboard/buyer'
+const dashboardPath =
+  profileLoading ? '#' :
+  profile?.role === 'admin' ? '/dashboard/admin' :
+  profile?.role === 'seller' ? '/dashboard/seller' :
+  '/dashboard/buyer'
 
   const dropdownLinks = [
     { label: 'Dashboard', path: dashboardPath },
@@ -138,7 +150,7 @@ export default function Navbar() {
               </Link>
             </div>
           ) : (
-            <div style={{ position: 'relative' }}>
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setDropdownOpen(prev => !prev)}
                 style={{
