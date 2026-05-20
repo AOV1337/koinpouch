@@ -16,6 +16,7 @@ import BuyerDashboard from './pages/BuyerDashboard'
 import SellerDashboard from './pages/SellerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import NotFound from './pages/NotFound'
+import CreateListing from './pages/CreateListing'
 import { useProfile } from './hooks/useProfile'
 
 function ProtectedRoute({ children, requiredRole }: {
@@ -82,6 +83,11 @@ export default function App() {
         <Route path="/dashboard/admin" element={
           <ProtectedRoute requiredRole="admin">
             <AdminDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/dashboard/seller/create" element={
+          <ProtectedRoute requiredRole="seller">
+            <CreateListing />
           </ProtectedRoute>
         } />
 
