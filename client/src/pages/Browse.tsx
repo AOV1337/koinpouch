@@ -1,17 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import ListingCard from '../components/ListingCard'
 import type { Listing } from '../components/ListingCard'
-
-const mockListings: Listing[] = [
-  { id: '1', title: 'Charizard Holo 1st Edition', price: 1200, currency: '€', category: 'cards', condition: 'near_mint', images: null, seller_id: 'mock', created_at: '2026-01-01' },
-  { id: '2', title: 'Roman Denarius — Julius Caesar', price: 340, currency: '€', category: 'coins', condition: 'good', images: null, seller_id: 'mock', created_at: '2026-01-02' },
-  { id: '3', title: 'Penny Black 1840 — Used', price: 890, currency: '€', category: 'stamps', condition: 'fair', images: null, seller_id: 'mock', created_at: '2026-01-03' },
-  { id: '4', title: 'Evangelion Unit-01 — Kotobukiya', price: 210, currency: '€', category: 'figurines', condition: 'mint', images: null, seller_id: 'mock', created_at: '2026-01-04' },
-  { id: '5', title: 'Pikachu Illustrator Card', price: 4500, currency: '€', category: 'cards', condition: 'mint', images: null, seller_id: 'mock', created_at: '2026-01-05' },
-  { id: '6', title: 'Gold Sovereign — Queen Victoria', price: 520, currency: '€', category: 'coins', condition: 'near_mint', images: null, seller_id: 'mock', created_at: '2026-01-06' },
-  { id: '7', title: 'Blue Mauritius 1847', price: 2100, currency: '€', category: 'stamps', condition: 'good', images: null, seller_id: 'mock', created_at: '2026-01-07' },
-  { id: '8', title: 'Guts Berserker Armor — Art of War', price: 380, currency: '€', category: 'figurines', condition: 'mint', images: null, seller_id: 'mock', created_at: '2026-01-08' },
-]
 
 const categories = ['All', 'cards', 'coins', 'stamps', 'figurines']
 const conditions = ['All', 'mint', 'near_mint', 'good', 'fair', 'poor']
@@ -22,6 +12,10 @@ const sortOptions = [
 ]
 
 export default function Browse() {
+  const [listings, setListings] = useState<Listing[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
   const [search, setSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [selectedCondition, setSelectedCondition] = useState('All')
@@ -29,8 +23,32 @@ export default function Browse() {
   const [maxPrice, setMaxPrice] = useState('')
   const [sort, setSort] = useState('newest')
 
+  useEffect(() => {
+    const fetchListings = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const { data, error: fetchError } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+
+        if (fetchError) throw fetchError
+        setListings((data as Listing[]) ?? [])
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'Failed to load listings')
+        } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchListings()
+  }, [])
+
   const filtered = useMemo(() => {
-    let result = [...mockListings]
+    let result = [...listings]
 
     if (search) {
       result = result.filter(l =>
@@ -56,11 +74,11 @@ export default function Browse() {
     )
 
     return result
-  }, [search, selectedCategory, selectedCondition, minPrice, maxPrice, sort])
+  }, [listings, search, selectedCategory, selectedCondition, minPrice, maxPrice, sort])
 
   const filterLabelStyle = {
     fontSize: '0.8rem',
-    fontWeight: 700,
+    fontWeight: 700 as const,
     color: 'var(--color-text-muted)',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.05em',
@@ -71,6 +89,22 @@ export default function Browse() {
   const filterSectionStyle = {
     marginBottom: '1.5rem',
   }
+
+  const filterBtnStyle = (active: boolean) => ({
+    display: 'block' as const,
+    width: '100%',
+    textAlign: 'left' as const,
+    padding: '6px 10px',
+    marginBottom: '2px',
+    borderRadius: '8px',
+    border: 'none',
+    backgroundColor: active ? 'var(--color-primary-light)' : 'transparent',
+    color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+    fontWeight: active ? 700 : 500,
+    fontSize: '0.9rem',
+    cursor: 'pointer' as const,
+    textTransform: 'capitalize' as const,
+  })
 
   return (
     <div style={{
@@ -93,12 +127,7 @@ export default function Browse() {
         borderRadius: '14px',
         padding: '1.5rem',
       }}>
-        <div style={{
-          fontWeight: 800,
-          fontSize: '1rem',
-          color: 'var(--color-text-primary)',
-          marginBottom: '1.5rem',
-        }}>
+        <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--color-text-primary)', marginBottom: '1.5rem' }}>
           Filters
         </div>
 
@@ -109,21 +138,7 @@ export default function Browse() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '6px 10px',
-                marginBottom: '2px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: selectedCategory === cat ? 'var(--color-primary-light)' : 'transparent',
-                color: selectedCategory === cat ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                fontWeight: selectedCategory === cat ? 700 : 500,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                textTransform: 'capitalize',
-              }}
+              style={filterBtnStyle(selectedCategory === cat)}
             >
               {cat === 'All' ? 'All Categories' : cat}
             </button>
@@ -137,21 +152,7 @@ export default function Browse() {
             <button
               key={cond}
               onClick={() => setSelectedCondition(cond)}
-              style={{
-                display: 'block',
-                width: '100%',
-                textAlign: 'left',
-                padding: '6px 10px',
-                marginBottom: '2px',
-                borderRadius: '8px',
-                border: 'none',
-                backgroundColor: selectedCondition === cond ? 'var(--color-primary-light)' : 'transparent',
-                color: selectedCondition === cond ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                fontWeight: selectedCondition === cond ? 700 : 500,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                textTransform: 'capitalize',
-              }}
+              style={filterBtnStyle(selectedCondition === cond)}
             >
               {cond === 'All' ? 'All Conditions' : cond.replace('_', ' ')}
             </button>
@@ -228,12 +229,7 @@ export default function Browse() {
       <div style={{ flex: 1, minWidth: 0 }}>
 
         {/* Search and sort bar */}
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          marginBottom: '1.5rem',
-          alignItems: 'center',
-        }}>
+        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', alignItems: 'center' }}>
           <input
             type="text"
             placeholder="Search listings..."
@@ -270,41 +266,57 @@ export default function Browse() {
           </select>
         </div>
 
-        {/* Results count */}
-        <div style={{
-          fontSize: '0.875rem',
-          color: 'var(--color-text-muted)',
-          marginBottom: '1.25rem',
-          fontWeight: 500,
-        }}>
-          {filtered.length} listing{filtered.length !== 1 ? 's' : ''} found
-        </div>
+        {/* Loading state */}
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--color-text-muted)' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⏳</div>
+            <div style={{ fontSize: '0.95rem' }}>Loading listings...</div>
+          </div>
+        )}
 
-        {/* Grid */}
-        {filtered.length > 0 ? (
+        {/* Error state */}
+        {error && !loading && (
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: '1.25rem',
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#dc2626',
+            padding: '1rem 1.25rem',
+            borderRadius: '10px',
+            fontSize: '0.875rem',
           }}>
-            {filtered.map(listing => (
-              <ListingCard key={listing.id} listing={listing} />
-            ))}
+            Failed to load listings: {error}
           </div>
-        ) : (
-          <div style={{
-            textAlign: 'center',
-            padding: '4rem 0',
-            color: 'var(--color-text-muted)',
-          }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
-              No listings found
+        )}
+
+        {/* Results */}
+        {!loading && !error && (
+          <>
+            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem', fontWeight: 500 }}>
+              {filtered.length} listing{filtered.length !== 1 ? 's' : ''} found
             </div>
-            <div style={{ fontSize: '0.9rem' }}>
-              Try adjusting your filters or search term
-            </div>
-          </div>
+
+            {filtered.length > 0 ? (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: '1.25rem',
+              }}>
+                {filtered.map(listing => (
+                  <ListingCard key={listing.id} listing={listing} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--color-text-muted)' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>
+                  No listings found
+                </div>
+                <div style={{ fontSize: '0.9rem' }}>
+                  {listings.length === 0 ? 'No listings have been posted yet.' : 'Try adjusting your filters or search term'}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

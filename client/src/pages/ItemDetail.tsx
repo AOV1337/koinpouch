@@ -1,37 +1,34 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 
-// Temporary mock — will be replaced with Supabase fetch by listing id
-const mockListing = {
-  id: '1',
-  title: 'Charizard Holo 1st Edition',
-  description: `One of the most iconic cards in the history of trading card games. This 1st Edition Base Set Charizard is in exceptional condition, with minimal edge wear and strong centering. The holographic surface shows no scratches under direct light.
+interface Seller {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+}
 
-This card was kept in a sleeve inside a binder since purchase in 1999 and has never been played. A grading submission to PSA or BGS is highly recommended before resale.`,
-  price: 1200,
-  currency: '€',
-  category: 'cards',
-  condition: 'near_mint',
-  status: 'active',
-  images: [] as string[],
-  created_at: '2026-01-01',
-  seller: {
-    id: 'seller-1',
-    full_name: 'Marco Rossi',
-    reputation_score: 4.8,
-    total_sales: 143,
-    kyc_status: 'approved',
-    joined_as_seller_at: '2024-03-15',
-  },
-  details: {
-    'Set': 'Base Set 1st Edition',
-    'Card Number': '4/102',
-    'Rarity': 'Holographic Rare',
-    'Language': 'English',
-    'Year': '1999',
-    'Publisher': 'Wizards of the Coast',
-  }
+interface SellerProfile {
+  reputation_score: number
+  total_sales: number
+  kyc_status: string
+}
+
+interface Listing {
+  id: string
+  title: string
+  description: string
+  price: number
+  currency: string
+  category: string
+  condition: string
+  status: string
+  images: string[] | null
+  created_at: string
+  seller_id: string
+  seller: Seller | null
+  seller_profile: SellerProfile | null
 }
 
 const conditionColors: Record<string, string> = {
@@ -52,21 +49,95 @@ const categoryEmoji: Record<string, string> = {
 export default function ItemDetail() {
   const { id } = useParams()
   const { user } = useAuth()
+  const navigate = useNavigate()
+
+  const [listing, setListing] = useState<Listing | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [activeImage, setActiveImage] = useState(0)
   const [bookmarked, setBookmarked] = useState(false)
 
-  // Will be replaced with real fetch: const { data } = await supabase.from('listings').select().eq('id', id)
-  const listing = mockListing
-  console.log('Listing id:', id)
+  useEffect(() => {
+    const fetchListing = async () => {
+      if (!id) return
+      try {
+        setLoading(true)
+        setError(null)
 
-  const images = listing.images.length > 0 ? listing.images : [null]
+        const { data: listingData, error: listingError } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('id', id)
+          .single()
+
+        if (listingError) throw listingError
+        if (!listingData) throw new Error('Listing not found')
+
+        const { data: sellerData } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .eq('id', listingData.seller_id)
+          .single()
+
+        const { data: sellerProfileData } = await supabase
+          .from('seller_profiles')
+          .select('reputation_score, total_sales, kyc_status')
+          .eq('user_id', listingData.seller_id)
+          .single()
+
+        setListing({
+          ...listingData,
+          seller: sellerData ?? null,
+          seller_profile: sellerProfileData ?? null,
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load listing')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchListing()
+  }, [id])
+
+  if (loading) return (
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⏳</div>
+        <div>Loading listing...</div>
+      </div>
+    </div>
+  )
+
+  if (error || !listing) return (
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
+        <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>❌</div>
+        <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>Listing not found</div>
+        <div style={{ fontSize: '0.875rem', marginBottom: '1.5rem' }}>{error}</div>
+        <button
+          onClick={() => navigate('/browse')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: 'var(--color-primary)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 600,
+          }}
+        >
+          Back to Browse
+        </button>
+      </div>
+    </div>
+  )
+
+  const images = listing.images && listing.images.length > 0 ? listing.images : [null]
+  const currencySymbol = listing.currency === 'EUR' ? '€' : listing.currency
 
   return (
-    <div style={{
-      maxWidth: '1280px',
-      margin: '0 auto',
-      padding: '2rem 1.5rem',
-    }}>
+    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
       {/* Breadcrumb */}
       <div style={{
@@ -76,6 +147,7 @@ export default function ItemDetail() {
         marginBottom: '1.5rem',
         fontSize: '0.875rem',
         color: 'var(--color-text-muted)',
+        flexWrap: 'wrap',
       }}>
         <Link to="/" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Home</Link>
         <span>›</span>
@@ -107,7 +179,6 @@ export default function ItemDetail() {
             overflow: 'hidden',
             marginBottom: '1.5rem',
           }}>
-            {/* Main image */}
             <div style={{
               height: '420px',
               backgroundColor: 'var(--color-primary-light)',
@@ -117,16 +188,11 @@ export default function ItemDetail() {
               fontSize: '8rem',
             }}>
               {images[activeImage]
-                ? <img
-                    src={images[activeImage]!}
-                    alt={listing.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
+                ? <img src={images[activeImage]!} alt={listing.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 : categoryEmoji[listing.category] ?? '📦'
               }
             </div>
 
-            {/* Thumbnail strip — ready for real images */}
             {images.length > 1 && (
               <div style={{
                 display: 'flex',
@@ -167,14 +233,8 @@ export default function ItemDetail() {
             border: '1px solid var(--color-border)',
             borderRadius: '16px',
             padding: '1.5rem',
-            marginBottom: '1.5rem',
           }}>
-            <h2 style={{
-              fontSize: '1rem',
-              fontWeight: 700,
-              color: 'var(--color-text-primary)',
-              marginBottom: '1rem',
-            }}>
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '1rem' }}>
               Description
             </h2>
             <p style={{
@@ -182,69 +242,15 @@ export default function ItemDetail() {
               color: 'var(--color-text-secondary)',
               lineHeight: 1.8,
               whiteSpace: 'pre-line',
+              margin: 0,
             }}>
               {listing.description}
             </p>
           </div>
-
-          {/* Item details */}
-          <div style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-          }}>
-            <h2 style={{
-              fontSize: '1rem',
-              fontWeight: 700,
-              color: 'var(--color-text-primary)',
-              marginBottom: '1rem',
-            }}>
-              Item Details
-            </h2>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '0.75rem',
-            }}>
-              {Object.entries(listing.details).map(([key, value]) => (
-                <div key={key} style={{
-                  backgroundColor: 'var(--color-background)',
-                  borderRadius: '10px',
-                  padding: '0.75rem 1rem',
-                  border: '1px solid var(--color-border)',
-                }}>
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--color-text-muted)',
-                    fontWeight: 600,
-                    marginBottom: '0.25rem',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                  }}>
-                    {key}
-                  </div>
-                  <div style={{
-                    fontSize: '0.9rem',
-                    color: 'var(--color-text-primary)',
-                    fontWeight: 600,
-                  }}>
-                    {value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Right column */}
-        <div style={{
-          position: 'sticky',
-          top: '80px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-        }}>
+        <div style={{ position: 'sticky', top: '80px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
           {/* Price card */}
           <div style={{
@@ -257,9 +263,9 @@ export default function ItemDetail() {
               fontSize: '0.8rem',
               color: 'var(--color-text-muted)',
               fontWeight: 600,
-              textTransform: 'uppercase',
               letterSpacing: '0.05em',
               marginBottom: '0.35rem',
+              textTransform: 'capitalize' as const,
             }}>
               {listing.category} · Listed {new Date(listing.created_at).toLocaleDateString('en-GB')}
             </div>
@@ -274,18 +280,9 @@ export default function ItemDetail() {
               {listing.title}
             </h1>
 
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              marginBottom: '1.25rem',
-            }}>
-              <span style={{
-                fontSize: '2rem',
-                fontWeight: 900,
-                color: 'var(--color-primary)',
-              }}>
-                {listing.currency}{listing.price.toLocaleString()}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--color-primary)' }}>
+                {currencySymbol}{listing.price.toLocaleString()}
               </span>
               <span style={{
                 fontSize: '0.8rem',
@@ -300,7 +297,6 @@ export default function ItemDetail() {
               </span>
             </div>
 
-            {/* Action buttons */}
             {user ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <button style={{
@@ -380,12 +376,7 @@ export default function ItemDetail() {
               Sold by
             </h2>
 
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              marginBottom: '1rem',
-            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
               <div style={{
                 width: '44px',
                 height: '44px',
@@ -399,68 +390,46 @@ export default function ItemDetail() {
                 fontSize: '1.1rem',
                 flexShrink: 0,
               }}>
-                {listing.seller.full_name.charAt(0)}
+                {listing.seller?.full_name?.charAt(0).toUpperCase() ?? '?'}
               </div>
               <div>
-                <div style={{
-                  fontWeight: 700,
-                  fontSize: '0.95rem',
-                  color: 'var(--color-text-primary)',
-                }}>
-                  {listing.seller.full_name}
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
+                  {listing.seller?.full_name ?? 'Unknown Seller'}
                 </div>
-                {listing.seller.kyc_status === 'approved' && (
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: '#22c55e',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                  }}>
+                {listing.seller_profile?.kyc_status === 'approved' && (
+                  <div style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>
                     ✅ Verified Seller
                   </div>
                 )}
               </div>
             </div>
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '0.5rem',
-              marginBottom: '1rem',
-            }}>
-              {[
-                { label: 'Reputation', value: `⭐ ${listing.seller.reputation_score}` },
-                { label: 'Total Sales', value: `${listing.seller.total_sales}` },
-              ].map(item => (
-                <div key={item.label} style={{
-                  backgroundColor: 'var(--color-background)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '8px',
-                  padding: '0.6rem 0.75rem',
-                  textAlign: 'center',
-                }}>
-                  <div style={{
-                    fontSize: '1rem',
-                    fontWeight: 800,
-                    color: 'var(--color-text-primary)',
+            {listing.seller_profile && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+                {[
+                  { label: 'Reputation', value: `⭐ ${listing.seller_profile.reputation_score ?? 'N/A'}` },
+                  { label: 'Total Sales', value: `${listing.seller_profile.total_sales ?? 0}` },
+                ].map(item => (
+                  <div key={item.label} style={{
+                    backgroundColor: 'var(--color-background)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '8px',
+                    padding: '0.6rem 0.75rem',
+                    textAlign: 'center',
                   }}>
-                    {item.value}
+                    <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                      {item.value}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
+                      {item.label}
+                    </div>
                   </div>
-                  <div style={{
-                    fontSize: '0.7rem',
-                    color: 'var(--color-text-muted)',
-                    fontWeight: 500,
-                  }}>
-                    {item.label}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <Link
-              to={`/seller/${listing.seller.id}`}
+              to={`/seller/${listing.seller_id}`}
               style={{
                 display: 'block',
                 textAlign: 'center',
@@ -490,7 +459,6 @@ export default function ItemDetail() {
               Report this listing
             </button>
           </div>
-
         </div>
       </div>
     </div>

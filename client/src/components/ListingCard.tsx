@@ -104,7 +104,7 @@ export default function ListingCard({ listing }: ListingCardProps) {
               fontWeight: 800,
               color: 'var(--color-primary)',
             }}>
-              {listing.currency}{listing.price.toFixed(2)}
+              {listing.currency === 'EUR' ? '€' : listing.currency}{listing.price.toFixed(2)}
             </span>
             <span style={{
               fontSize: '0.75rem',
