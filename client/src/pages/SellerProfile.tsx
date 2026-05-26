@@ -1,428 +1,554 @@
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import ListingCard from '../components/ListingCard'
-import type { Listing } from '../components/ListingCard'
+import { supabase } from '../lib/supabase'
 
-const mockSeller = {
-  id: 'seller-1',
-  full_name: 'Marco Rossi',
-  avatar_url: null,
-  bio: 'Passionate collector for over 20 years. Specialising in vintage trading cards and rare coins. All items carefully stored and accurately described. Fast shipping, always tracked.',
-  location: 'Milan, Italy',
-  kyc_status: 'approved',
-  reputation_score: 4.8,
-  total_sales: 143,
-  total_disputes: 2,
-  avg_shipping_days: 2,
-  joined_as_seller_at: '2024-03-15',
-  reviews: [
-    { id: 'r1', buyer_name: 'Alex K.', rating: 5, comment: 'Perfect condition, fast shipping. Highly recommended!', created_at: '2026-04-10' },
-    { id: 'r2', buyer_name: 'Sophie M.', rating: 5, comment: 'Great communication, item exactly as described.', created_at: '2026-03-22' },
-    { id: 'r3', buyer_name: 'James T.', rating: 4, comment: 'Good seller, shipping took a bit longer than expected but item was perfect.', created_at: '2026-03-01' },
-    { id: 'r4', buyer_name: 'Lena B.', rating: 5, comment: 'Incredible item, even better in person. Will buy again.', created_at: '2026-02-14' },
-  ],
-  rating_breakdown: { 5: 118, 4: 19, 3: 4, 2: 1, 1: 1 },
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface SellerProfileRow {
+  bio: string | null
+  location: string | null
+  reputation_score: number | null
+  total_sales: number | null
+  joined_as_seller_at: string | null
+  kyc_status: 'pending' | 'approved' | 'rejected'
 }
 
-const mockListings: Listing[] = [
-  { id: '1', title: 'Charizard Holo 1st Edition', price: 1200, currency: '€', category: 'cards', condition: 'near_mint', images: null, seller_id: 'seller-1', created_at: '2026-01-01' },
-  { id: '2', title: 'Pikachu Illustrator Card', price: 4500, currency: '€', category: 'cards', condition: 'mint', images: null, seller_id: 'seller-1', created_at: '2026-01-05' },
-  { id: '6', title: 'Gold Sovereign — Queen Victoria', price: 520, currency: '€', category: 'coins', condition: 'near_mint', images: null, seller_id: 'seller-1', created_at: '2026-01-06' },
-]
+interface SellerInfo {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+  created_at: string
+  // Supabase returns one-to-many joins as arrays even for one-to-one relations
+  seller_profiles: SellerProfileRow[] | null
+}
 
-const starColor = '#f97316'
+interface Listing {
+  id: string
+  title: string
+  price: number
+  currency: string
+  category: string
+  condition: string
+  images: string[] | null
+  created_at: string
+}
 
-function StarBar({ star, count, total }: { star: number, count: number, total: number }) {
-  const pct = total > 0 ? (count / total) * 100 : 0
+interface Review {
+  id: string
+  rating: number
+  comment: string | null
+  created_at: string
+  // Supabase returns joined profiles as an array; we normalize to [0] after fetch
+  buyer: { full_name: string | null }[] | null
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function StarRating({ rating }: { rating: number }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', width: '16px', textAlign: 'right' }}>{star}</span>
-      <span style={{ fontSize: '0.75rem' }}>★</span>
-      <div style={{
-        flex: 1,
-        height: '8px',
-        backgroundColor: 'var(--color-border)',
-        borderRadius: '999px',
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          width: `${pct}%`,
-          height: '100%',
-          backgroundColor: starColor,
-          borderRadius: '999px',
-          transition: 'width 0.3s ease',
-        }} />
-      </div>
-      <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', width: '24px' }}>{count}</span>
-    </div>
+    <span style={{ display: 'inline-flex', gap: '2px' }}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span
+          key={star}
+          style={{
+            color: star <= rating ? '#f97316' : 'var(--color-border)',
+            fontSize: '1rem',
+          }}
+        >
+          ★
+        </span>
+      ))}
+    </span>
   )
 }
 
-function ReviewCard({ review }: { review: typeof mockSeller.reviews[0] }) {
+function AverageRating({ reviews }: { reviews: Review[] }) {
+  if (reviews.length === 0) return <span style={{ color: 'var(--color-text-muted)' }}>No reviews yet</span>
+  const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
   return (
-    <div style={{
-      backgroundColor: 'var(--color-background)',
-      border: '1px solid var(--color-border)',
-      borderRadius: '12px',
-      padding: '1.25rem',
-    }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: '0.5rem',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      <StarRating rating={Math.round(avg)} />
+      <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>
+        {avg.toFixed(1)} ({reviews.length} review{reviews.length !== 1 ? 's' : ''})
+      </span>
+    </span>
+  )
+}
+
+function CategoryBadge({ category }: { category: string }) {
+  const colors: Record<string, string> = {
+    cards: '#3b82f6',
+    figurines: '#8b5cf6',
+    coins: '#f59e0b',
+    stamps: '#10b981',
+  }
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 10px',
+        borderRadius: '999px',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        textTransform: 'capitalize',
+        background: colors[category] ?? '#6b7280',
+        color: '#fff',
+      }}
+    >
+      {category}
+    </span>
+  )
+}
+
+function ConditionBadge({ condition }: { condition: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 8px',
+        borderRadius: '4px',
+        fontSize: '0.75rem',
+        fontWeight: 500,
+        textTransform: 'capitalize',
+        background: 'var(--color-surface)',
+        color: 'var(--color-text-secondary)',
+        border: '1px solid var(--color-border)',
+      }}
+    >
+      {condition.replace('_', ' ')}
+    </span>
+  )
+}
+
+function KycBadge({ status }: { status: 'pending' | 'approved' | 'rejected' }) {
+  const map = {
+    approved: { label: '✓ Verified Seller', color: '#10b981', bg: '#d1fae5' },
+    pending: { label: '⏳ Verification Pending', color: '#f59e0b', bg: '#fef3c7' },
+    rejected: { label: '✗ Not Verified', color: '#ef4444', bg: '#fee2e2' },
+  }
+  const { label, color, bg } = map[status]
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '4px 12px',
+        borderRadius: '999px',
+        fontSize: '0.8rem',
+        fontWeight: 600,
+        color,
+        background: bg,
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('en-GB', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+function formatMemberSince(dateStr: string | null) {
+  if (!dateStr) return 'Unknown'
+  return new Date(dateStr).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' })
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function SellerProfile() {
+  const { id } = useParams<{ id: string }>()
+
+  const [seller, setSeller] = useState<SellerInfo | null>(null)
+  const [listings, setListings] = useState<Listing[]>([])
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [activeTab, setActiveTab] = useState<'listings' | 'reviews'>('listings')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchSellerData = useCallback(async () => {
+    if (!id) return
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Fetch seller profile + seller_profiles join
+      const { data: sellerData, error: sellerError } = await supabase
+        .from('profiles')
+        .select(`
+          id,
+          full_name,
+          avatar_url,
+          created_at,
+          seller_profiles (
+            bio,
+            location,
+            reputation_score,
+            total_sales,
+            joined_as_seller_at,
+            kyc_status
+          )
+        `)
+        .eq('id', id)
+        .single()
+
+      if (sellerError) throw sellerError
+      setSeller(sellerData as unknown as SellerInfo)
+
+      // Fetch active listings by this seller
+      const { data: listingsData, error: listingsError } = await supabase
+        .from('listings')
+        .select('id, title, price, currency, category, condition, images, created_at')
+        .eq('seller_id', id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+
+      if (listingsError) throw listingsError
+      setListings(listingsData ?? [])
+
+      // Fetch reviews for this seller
+      const { data: reviewsData, error: reviewsError } = await supabase
+        .from('reviews')
+        .select(`
+          id,
+          rating,
+          comment,
+          created_at,
+          buyer:profiles!reviews_buyer_id_fkey (
+            full_name
+          )
+        `)
+        .eq('seller_id', id)
+        .order('created_at', { ascending: false })
+
+      if (reviewsError) throw reviewsError
+      setReviews((reviewsData as unknown as Review[]) ?? [])
+    } catch (err: unknown) {
+      console.error(err)
+      setError('Could not load seller profile. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSellerData()
+  }, [fetchSellerData])
+
+  // ── Loading ────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: 'var(--color-text-muted)' }}>Loading seller profile…</p>
+      </div>
+    )
+  }
+
+  if (error || !seller) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+        <p style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{error ?? 'Seller not found.'}</p>
+        <Link to="/browse" style={{ color: '#f97316', textDecoration: 'underline' }}>Back to Browse</Link>
+      </div>
+    )
+  }
+
+  const sp = Array.isArray(seller.seller_profiles) ? (seller.seller_profiles[0] ?? null) : null
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '40px 24px 80px' }}>
+
+      {/* ── Breadcrumb ── */}
+      <nav style={{ marginBottom: '24px', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+        <Link to="/" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Home</Link>
+        <span style={{ margin: '0 6px' }}>›</span>
+        <Link to="/browse" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Browse</Link>
+        <span style={{ margin: '0 6px' }}>›</span>
+        <span style={{ color: 'var(--color-text-primary)' }}>{seller.full_name ?? 'Seller'}</span>
+      </nav>
+
+      {/* ── Seller Card ── */}
+      <div
+        style={{
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '16px',
+          padding: '32px',
+          marginBottom: '32px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '32px',
+          alignItems: 'flex-start',
+        }}
+      >
+        {/* Avatar */}
+        <div
+          style={{
+            width: '96px',
+            height: '96px',
             borderRadius: '50%',
-            backgroundColor: 'var(--color-primary-light)',
-            color: 'var(--color-primary)',
+            background: seller.avatar_url ? undefined : '#f97316',
+            backgroundImage: seller.avatar_url ? `url(${seller.avatar_url})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            fontSize: '2.2rem',
+            color: '#fff',
             fontWeight: 700,
-            fontSize: '0.85rem',
-          }}>
-            {review.buyer_name.charAt(0)}
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text-primary)' }}>
-              {review.buyer_name}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-              {new Date(review.created_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '2px' }}>
-          {[1, 2, 3, 4, 5].map(s => (
-            <span key={s} style={{ color: s <= review.rating ? starColor : 'var(--color-border)', fontSize: '0.9rem' }}>★</span>
-          ))}
-        </div>
-      </div>
-      <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: 0 }}>
-        {review.comment}
-      </p>
-    </div>
-  )
-}
-
-export default function SellerProfile() {
-  const { id } = useParams()
-  console.log('Seller id:', id)
-
-  const seller = mockSeller
-  const totalReviews = Object.values(seller.rating_breakdown).reduce((a, b) => a + b, 0)
-
-  return (
-    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
-
-      {/* Breadcrumb */}
-      <div style={{
-        display: 'flex',
-        gap: '0.5rem',
-        alignItems: 'center',
-        marginBottom: '1.5rem',
-        fontSize: '0.875rem',
-        color: 'var(--color-text-muted)',
-      }}>
-        <Link to="/" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Home</Link>
-        <span>›</span>
-        <Link to="/browse" style={{ color: 'var(--color-text-muted)', textDecoration: 'none' }}>Browse</Link>
-        <span>›</span>
-        <span style={{ color: 'var(--color-text-primary)', fontWeight: 500 }}>{seller.full_name}</span>
-      </div>
-
-      {/* Seller header */}
-      <div style={{
-        backgroundColor: 'var(--color-surface)',
-        border: '1px solid var(--color-border)',
-        borderRadius: '16px',
-        padding: '2rem',
-        marginBottom: '1.5rem',
-        display: 'flex',
-        gap: '1.5rem',
-        alignItems: 'flex-start',
-        flexWrap: 'wrap',
-      }}>
-        {/* Avatar */}
-        <div style={{
-          width: '80px',
-          height: '80px',
-          borderRadius: '50%',
-          backgroundColor: 'var(--color-primary)',
-          color: '#fff',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '2rem',
-          fontWeight: 700,
-          flexShrink: 0,
-        }}>
-          {seller.full_name.charAt(0)}
+          }}
+        >
+          {!seller.avatar_url && (seller.full_name?.[0]?.toUpperCase() ?? '?')}
         </div>
 
         {/* Info */}
         <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--color-text-primary)', margin: 0 }}>
-              {seller.full_name}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+            <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+              {seller.full_name ?? 'Anonymous Seller'}
             </h1>
-            {seller.kyc_status === 'approved' && (
-              <span style={{
-                fontSize: '0.75rem',
-                color: '#22c55e',
-                backgroundColor: '#f0fdf4',
-                border: '1px solid #86efac',
-                padding: '3px 10px',
-                borderRadius: '999px',
-                fontWeight: 700,
-              }}>
-                ✅ Verified Seller
-              </span>
-            )}
+            {sp?.kyc_status && <KycBadge status={sp.kyc_status} />}
           </div>
 
-          <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-            {seller.location && (
-              <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                📍 {seller.location}
-              </span>
-            )}
-            <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-              📅 Selling since {new Date(seller.joined_as_seller_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' })}
-            </span>
-            <span style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-              🚚 Avg. shipping {seller.avg_shipping_days} days
-            </span>
+          <div style={{ marginBottom: '12px' }}>
+            <AverageRating reviews={reviews} />
           </div>
 
-          {seller.bio && (
-            <p style={{
-              fontSize: '0.9rem',
-              color: 'var(--color-text-secondary)',
-              lineHeight: 1.7,
-              margin: 0,
-              maxWidth: '600px',
-            }}>
-              {seller.bio}
+          {sp?.bio && (
+            <p style={{ color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '12px', maxWidth: '600px' }}>
+              {sp.bio}
             </p>
           )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+            {sp?.location && (
+              <span>📍 {sp.location}</span>
+            )}
+            <span>📦 {sp?.total_sales ?? 0} sales</span>
+            <span>🗓 Member since {formatMemberSince(sp?.joined_as_seller_at ?? seller.created_at)}</span>
+          </div>
         </div>
 
-        {/* Stats */}
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          flexWrap: 'wrap',
-        }}>
-          {[
-            { label: 'Reputation', value: `⭐ ${seller.reputation_score}` },
-            { label: 'Total Sales', value: seller.total_sales.toString() },
-            { label: 'Disputes', value: seller.total_disputes.toString() },
-          ].map(stat => (
-            <div key={stat.label} style={{
-              backgroundColor: 'var(--color-background)',
-              border: '1px solid var(--color-border)',
-              borderRadius: '12px',
-              padding: '0.875rem 1.25rem',
-              textAlign: 'center',
-              minWidth: '90px',
-            }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                {stat.value}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
-                {stat.label}
-              </div>
-            </div>
-          ))}
+        {/* Stats box */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            minWidth: '140px',
+          }}
+        >
+          <StatBox label="Active Listings" value={listings.length.toString()} />
+          <StatBox label="Total Sales" value={(sp?.total_sales ?? 0).toString()} />
+          <StatBox label="Reviews" value={reviews.length.toString()} />
         </div>
       </div>
 
-      {/* Two column layout */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 320px',
-        gap: '1.5rem',
-        alignItems: 'flex-start',
-      }}>
+      {/* ── Tabs ── */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0',
+          borderBottom: '2px solid var(--color-border)',
+          marginBottom: '28px',
+        }}
+      >
+        {(['listings', 'reviews'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              padding: '10px 24px',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === tab ? '2px solid #f97316' : '2px solid transparent',
+              marginBottom: '-2px',
+              cursor: 'pointer',
+              fontWeight: activeTab === tab ? 700 : 400,
+              color: activeTab === tab ? '#f97316' : 'var(--color-text-secondary)',
+              fontSize: '0.95rem',
+              textTransform: 'capitalize',
+              transition: 'color 0.15s',
+            }}
+          >
+            {tab === 'listings' ? `Listings (${listings.length})` : `Reviews (${reviews.length})`}
+          </button>
+        ))}
+      </div>
 
-        {/* Left — listings + reviews */}
-        <div>
-
-          {/* Active listings */}
-          <div style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-            marginBottom: '1.5rem',
-          }}>
-            <h2 style={{
-              fontSize: '1rem',
-              fontWeight: 700,
-              color: 'var(--color-text-primary)',
-              marginBottom: '1.25rem',
-            }}>
-              Active Listings ({mockListings.length})
-            </h2>
-            {mockListings.length > 0 ? (
-              <div style={{
+      {/* ── Listings Tab ── */}
+      {activeTab === 'listings' && (
+        <>
+          {listings.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-text-muted)' }}>
+              This seller has no active listings at the moment.
+            </div>
+          ) : (
+            <div
+              style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                gap: '1rem',
-              }}>
-                {mockListings.map(listing => (
-                  <ListingCard key={listing.id} listing={listing} />
-                ))}
-              </div>
-            ) : (
-              <div style={{
-                textAlign: 'center',
-                padding: '2rem 0',
-                color: 'var(--color-text-muted)',
-                fontSize: '0.9rem',
-              }}>
-                No active listings at the moment.
-              </div>
-            )}
-          </div>
+                gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                gap: '20px',
+              }}
+            >
+              {listings.map((listing) => (
+                <ListingCard key={listing.id} listing={listing} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
-          {/* Reviews */}
-          <div style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-          }}>
-            <h2 style={{
-              fontSize: '1rem',
-              fontWeight: 700,
-              color: 'var(--color-text-primary)',
-              marginBottom: '1.25rem',
-            }}>
-              Reviews ({totalReviews})
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {seller.reviews.map(review => (
+      {/* ── Reviews Tab ── */}
+      {activeTab === 'reviews' && (
+        <>
+          {reviews.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-text-muted)' }}>
+              No reviews yet for this seller.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {reviews.map((review) => (
                 <ReviewCard key={review.id} review={review} />
               ))}
             </div>
-          </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        background: 'var(--color-background)',
+        border: '1px solid var(--color-border)',
+        borderRadius: '10px',
+        padding: '12px 16px',
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{value}</div>
+      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>{label}</div>
+    </div>
+  )
+}
+
+function ListingCard({ listing }: { listing: Listing }) {
+  const image = Array.isArray(listing.images) && listing.images.length > 0 ? listing.images[0] : null
+
+  return (
+    <Link
+      to={`/item/${listing.id}`}
+      style={{ textDecoration: 'none' }}
+    >
+      <div
+        style={{
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          transition: 'box-shadow 0.2s, transform 0.2s',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget as HTMLDivElement
+          el.style.boxShadow = '0 4px 20px rgba(249,115,22,0.15)'
+          el.style.transform = 'translateY(-2px)'
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLDivElement
+          el.style.boxShadow = 'none'
+          el.style.transform = 'translateY(0)'
+        }}
+      >
+        {/* Image */}
+        <div
+          style={{
+            height: '180px',
+            background: image ? undefined : 'var(--color-border)',
+            backgroundImage: image ? `url(${image})` : undefined,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            display: image ? undefined : 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {!image && (
+            <span style={{ color: 'var(--color-text-muted)', fontSize: '2rem' }}>🖼</span>
+          )}
         </div>
 
-        {/* Right — reputation breakdown */}
-        <div style={{
-          position: 'sticky',
-          top: '80px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-        }}>
-          <div style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-          }}>
-            <h2 style={{
-              fontSize: '0.875rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              marginBottom: '1rem',
-            }}>
-              Rating Breakdown
-            </h2>
+        {/* Info */}
+        <div style={{ padding: '14px' }}>
+          <p
+            style={{
+              margin: '0 0 8px',
+              fontWeight: 600,
+              fontSize: '0.95rem',
+              color: 'var(--color-text-primary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {listing.title}
+          </p>
 
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              marginBottom: '1.25rem',
-            }}>
-              <div style={{
-                fontSize: '3rem',
-                fontWeight: 900,
-                color: 'var(--color-text-primary)',
-                lineHeight: 1,
-              }}>
-                {seller.reputation_score}
-              </div>
-              <div>
-                <div style={{ display: 'flex', gap: '2px', marginBottom: '0.25rem' }}>
-                  {[1, 2, 3, 4, 5].map(s => (
-                    <span key={s} style={{
-                      color: s <= Math.round(seller.reputation_score) ? starColor : 'var(--color-border)',
-                      fontSize: '1rem',
-                    }}>★</span>
-                  ))}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  {totalReviews} reviews
-                </div>
-              </div>
-            </div>
-
-            {[5, 4, 3, 2, 1].map(star => (
-              <StarBar
-                key={star}
-                star={star}
-                count={seller.rating_breakdown[star as keyof typeof seller.rating_breakdown]}
-                total={totalReviews}
-              />
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#f97316' }}>
+              {listing.currency} {listing.price.toFixed(2)}
+            </span>
+            <ConditionBadge condition={listing.condition} />
           </div>
 
-          {/* Trust indicators */}
-          <div style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-          }}>
-            <h2 style={{
-              fontSize: '0.875rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              marginBottom: '1rem',
-            }}>
-              Trust & Safety
-            </h2>
-            {[
-              { label: 'Identity Verified', status: seller.kyc_status === 'approved', icon: '🪪' },
-              { label: 'Email Confirmed', status: true, icon: '📧' },
-              { label: 'Active Seller', status: seller.total_sales > 0, icon: '✅' },
-              { label: 'Low Dispute Rate', status: (seller.total_disputes / seller.total_sales) < 0.05, icon: '🛡️' },
-            ].map(item => (
-              <div key={item.label} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                padding: '0.5rem 0',
-                borderBottom: '1px solid var(--color-border)',
-              }}>
-                <span style={{ fontSize: '1rem' }}>{item.icon}</span>
-                <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--color-text-primary)', fontWeight: 500 }}>
-                  {item.label}
-                </span>
-                <span style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  color: item.status ? '#22c55e' : '#ef4444',
-                }}>
-                  {item.status ? '✓' : '✗'}
-                </span>
-              </div>
-            ))}
-          </div>
+          <CategoryBadge category={listing.category} />
         </div>
       </div>
+    </Link>
+  )
+}
+
+function ReviewCard({ review }: { review: Review }) {
+  return (
+    <div
+      style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: '12px',
+        padding: '20px 24px',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', marginRight: '10px' }}>
+            {(review.buyer?.[0]?.full_name) ?? 'Anonymous'}
+          </span>
+          <StarRating rating={review.rating} />
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+          {formatDate(review.created_at)}
+        </span>
+      </div>
+      {review.comment && (
+        <p style={{ margin: 0, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+          {review.comment}
+        </p>
+      )}
     </div>
   )
 }
