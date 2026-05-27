@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../layouts/DashboardLayout'
+import KycReviewPanel from '../components/KycReviewPanel'
 
 const sidebarItems = [
   { label: 'Overview', path: '/dashboard/admin', icon: '📊' },
@@ -20,14 +21,6 @@ const mockStats = [
   { label: 'Total Orders', value: '0', icon: '📦', color: '#8b5cf6' },
   { label: 'Revenue', value: '€0', icon: '💰', color: '#22c55e' },
 ]
-
-const mockKycQueue: {
-  id: string
-  name: string
-  email: string
-  submitted: string
-  tier: string
-}[] = []
 
 const mockTickets: {
   id: string
@@ -129,77 +122,14 @@ export default function AdminDashboard() {
         marginBottom: '1.5rem',
       }}>
 
-        {/* KYC Queue */}
+        {/* KYC Review Panel — real data */}
         <div style={{
           backgroundColor: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
           borderRadius: '12px',
           padding: '1.5rem',
         }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1.25rem',
-          }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-              🪪 KYC Review Queue
-            </h2>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 600 }}>
-              View all →
-            </span>
-          </div>
-          {mockKycQueue.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✅</div>
-              No pending KYC requests
-            </div>
-          ) : (
-            mockKycQueue.map(item => (
-              <div key={item.id} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '0.75rem 0',
-                borderBottom: '1px solid var(--color-border)',
-              }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text-primary)' }}>
-                    {item.name}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                    {item.email} · {item.tier}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button style={{
-                    padding: '4px 10px',
-                    backgroundColor: '#22c55e',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}>
-                    Approve
-                  </button>
-                  <button style={{
-                    padding: '4px 10px',
-                    backgroundColor: '#ef4444',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}>
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
+          <KycReviewPanel />
         </div>
 
         {/* Support Tickets */}

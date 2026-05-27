@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import MainLayout from './layouts/MainLayout'
-
 import Home from './pages/Home'
 import Browse from './pages/Browse'
 import ItemDetail from './pages/ItemDetail'
@@ -18,8 +17,8 @@ import AdminDashboard from './pages/AdminDashboard'
 import NotFound from './pages/NotFound'
 import CreateListing from './pages/CreateListing'
 import SellerListings from './pages/SellerListings'
+import KycSubmission from './pages/KycSubmission'
 import { useProfile } from './hooks/useProfile'
-
 
 function ProtectedRoute({ children, requiredRole }: {
   children: React.ReactNode
@@ -27,7 +26,6 @@ function ProtectedRoute({ children, requiredRole }: {
 }) {
   const { user, loading: authLoading } = useAuth()
   const { profile, loading: profileLoading } = useProfile()
-
   if (authLoading || profileLoading) {
     return (
       <div style={{
@@ -42,16 +40,12 @@ function ProtectedRoute({ children, requiredRole }: {
       </div>
     )
   }
-
   if (!user) return <Navigate to="/login" replace />
-
   if (requiredRole && profile?.role !== requiredRole) {
-    // Redirect to their correct dashboard instead of a blank page
     if (profile?.role === 'admin') return <Navigate to="/dashboard/admin" replace />
     if (profile?.role === 'seller') return <Navigate to="/dashboard/seller" replace />
     return <Navigate to="/dashboard/buyer" replace />
   }
-
   return <>{children}</>
 }
 
@@ -70,7 +64,6 @@ export default function App() {
         <Route path="/database/:id" element={<MainLayout><DatabaseItemDetail /></MainLayout>} />
         <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
         <Route path="/register" element={<MainLayout><Register /></MainLayout>} />
-
         {/* Protected routes */}
         <Route path="/dashboard/buyer" element={
           <ProtectedRoute requiredRole="buyer">
@@ -97,7 +90,11 @@ export default function App() {
             <CreateListing />
           </ProtectedRoute>
         } />
-
+        <Route path="/dashboard/seller/kyc" element={
+          <ProtectedRoute requiredRole="seller">
+            <KycSubmission />
+          </ProtectedRoute>
+        } />
         {/* Fallback */}
         <Route path="*" element={<MainLayout><NotFound /></MainLayout>} />
       </Routes>

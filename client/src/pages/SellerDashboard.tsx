@@ -1,6 +1,9 @@
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../layouts/DashboardLayout'
 import { useProfile } from '../hooks/useProfile'
+import { useAuth } from '../hooks/useAuth'
+import { supabase } from '../lib/supabase'
 
 const sidebarItems = [
   { label: 'Overview', path: '/dashboard/seller', icon: '📊' },
@@ -21,18 +24,59 @@ const mockStats = [
 ]
 
 export default function SellerDashboard() {
-  const { profile, sellerProfile } = useProfile()
+  const { profile } = useProfile()
+  const { user } = useAuth()
 
-  const kycStatus = sellerProfile?.kyc_status ?? 'pending'
+  // Real KYC request state — drives the banner
+  const [kycRequest, setKycRequest] = useState<{
+    status: 'pending' | 'approved' | 'rejected'
+    submitted_at: string
+    reviewed_at: string | null
+  } | null>(null)
+  const [kycLoading, setKycLoading] = useState(true)
 
-  const kycBanner = {
+  const fetchKycRequest = useCallback(async () => {
+    if (!user) return
+    setKycLoading(true)
+    const { data } = await supabase
+      .from('kyc_requests')
+      .select('status, submitted_at, reviewed_at')
+      .eq('user_id', user.id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setKycRequest(data ?? null)
+    setKycLoading(false)
+  }, [user])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchKycRequest()
+  }, [fetchKycRequest])
+
+  // Banner config driven by real kyc_request row
+  // If no request exists yet → prompt to start
+  // If request exists → show its status
+  const hasSubmitted = !kycLoading && kycRequest !== null
+  const kycStatus = kycRequest?.status ?? null
+
+  const bannerConfig = {
+    none: {
+      bg: '#fefce8',
+      border: '#fde047',
+      color: '#854d0e',
+      icon: '🪪',
+      title: 'Identity Verification Required',
+      message: 'To list items and sell on Koinpouch, you need to complete identity verification.',
+      cta: { label: 'Start KYC', to: '/dashboard/seller/kyc', style: 'primary' as const },
+    },
     pending: {
       bg: '#fefce8',
       border: '#fde047',
       color: '#854d0e',
       icon: '⏳',
-      title: 'KYC Verification Pending',
-      message: 'Your identity verification is under review. You can browse the platform but cannot list items yet.',
+      title: 'Verification Under Review',
+      message: `Your request was submitted on ${kycRequest ? new Date(kycRequest.submitted_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}. Our team will review it shortly.`,
       cta: null,
     },
     approved: {
@@ -41,7 +85,7 @@ export default function SellerDashboard() {
       color: '#166534',
       icon: '✅',
       title: 'Verified Seller',
-      message: 'Your account is verified. You can list items and sell on Koinpouch.',
+      message: `Your account was verified on ${kycRequest?.reviewed_at ? new Date(kycRequest.reviewed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}. You can list items and sell on Koinpouch.`,
       cta: null,
     },
     rejected: {
@@ -50,77 +94,57 @@ export default function SellerDashboard() {
       color: '#dc2626',
       icon: '❌',
       title: 'KYC Rejected',
-      message: 'Your verification was rejected. Please review the requirements and resubmit.',
-      cta: '/dashboard/seller/kyc',
+      message: 'Your verification was rejected. Please resubmit with correct information.',
+      cta: { label: 'Resubmit KYC', to: '/dashboard/seller/kyc', style: 'danger' as const },
     },
   }
 
-  const banner = kycBanner[kycStatus]
+  const bannerKey = kycLoading ? null : !hasSubmitted ? 'none' : kycStatus ?? 'none'
+  const banner = bannerKey ? bannerConfig[bannerKey] : null
 
   return (
     <DashboardLayout sidebarItems={sidebarItems} title="Seller Dashboard">
 
       {/* KYC Status Banner */}
-      <div style={{
-        backgroundColor: banner.bg,
-        border: `1px solid ${banner.border}`,
-        borderRadius: '12px',
-        padding: '1.25rem 1.5rem',
-        marginBottom: '2rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '1rem',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '1.5rem' }}>{banner.icon}</span>
-          <div>
-            <div style={{
-              fontWeight: 700,
-              fontSize: '0.95rem',
-              color: banner.color,
-              marginBottom: '0.2rem',
-            }}>
-              {banner.title}
-            </div>
-            <div style={{
-              fontSize: '0.85rem',
-              color: banner.color,
-              opacity: 0.85,
-            }}>
-              {banner.message}
+      {!kycLoading && banner && (
+        <div style={{
+          backgroundColor: banner.bg,
+          border: `1px solid ${banner.border}`,
+          borderRadius: '12px',
+          padding: '1.25rem 1.5rem',
+          marginBottom: '2rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontSize: '1.5rem' }}>{banner.icon}</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: banner.color, marginBottom: '0.2rem' }}>
+                {banner.title}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: banner.color, opacity: 0.85 }}>
+                {banner.message}
+              </div>
             </div>
           </div>
+          {banner.cta && (
+            <Link to={banner.cta.to} style={{
+              padding: '8px 16px',
+              backgroundColor: banner.cta.style === 'danger' ? '#dc2626' : 'var(--color-primary)',
+              color: '#fff',
+              borderRadius: '8px',
+              textDecoration: 'none',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}>
+              {banner.cta.label}
+            </Link>
+          )}
         </div>
-        {banner.cta && (
-          <Link to={banner.cta} style={{
-            padding: '8px 16px',
-            backgroundColor: '#dc2626',
-            color: '#fff',
-            borderRadius: '8px',
-            textDecoration: 'none',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-          }}>
-            Resubmit KYC
-          </Link>
-        )}
-        {kycStatus === 'pending' && !sellerProfile && (
-          <Link to="/dashboard/seller/kyc" style={{
-            padding: '8px 16px',
-            backgroundColor: 'var(--color-primary)',
-            color: '#fff',
-            borderRadius: '8px',
-            textDecoration: 'none',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-          }}>
-            Start KYC
-          </Link>
-        )}
-      </div>
+      )}
 
       {/* Welcome */}
       <div style={{
