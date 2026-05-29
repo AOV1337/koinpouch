@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import CheckoutModal from '../components/CheckoutModal'
 
 interface Seller {
   id: string
@@ -56,6 +57,7 @@ export default function ItemDetail() {
   const [error, setError] = useState<string | null>(null)
   const [activeImage, setActiveImage] = useState(0)
   const [bookmarked, setBookmarked] = useState(false)
+  const [showCheckout, setShowCheckout] = useState(false)
 
   useEffect(() => {
     const fetchListing = async () => {
@@ -100,6 +102,12 @@ export default function ItemDetail() {
     fetchListing()
   }, [id])
 
+  function handlePurchaseSuccess() {
+    setShowCheckout(false)
+    // Refresh listing so status shows as sold
+    setListing((prev) => prev ? { ...prev, status: 'sold' } : prev)
+  }
+
   if (loading) return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
       <div style={{ textAlign: 'center' }}>
@@ -135,9 +143,27 @@ export default function ItemDetail() {
 
   const images = listing.images && listing.images.length > 0 ? listing.images : [null]
   const currencySymbol = listing.currency === 'EUR' ? '€' : listing.currency
+  const isSold = listing.status === 'sold'
+  const isOwnListing = user?.id === listing.seller_id
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
+
+      {/* Checkout modal */}
+      {showCheckout && user && (
+        <CheckoutModal
+          listing={{
+            id: listing.id,
+            title: listing.title,
+            price: listing.price,
+            currency: listing.currency,
+            seller_id: listing.seller_id,
+          }}
+          buyerId={user.id}
+          onClose={() => setShowCheckout(false)}
+          onSuccess={handlePurchaseSuccess}
+        />
+      )}
 
       {/* Breadcrumb */}
       <div style={{
@@ -281,7 +307,7 @@ export default function ItemDetail() {
             </h1>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              <span style={{ fontSize: '2rem', fontWeight: 900, color: 'var(--color-primary)' }}>
+              <span style={{ fontSize: '2rem', fontWeight: 900, color: isSold ? 'var(--color-text-muted)' : 'var(--color-primary)' }}>
                 {currencySymbol}{listing.price.toLocaleString()}
               </span>
               <span style={{
@@ -297,64 +323,100 @@ export default function ItemDetail() {
               </span>
             </div>
 
-            {user ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <button style={{
-                  width: '100%',
-                  padding: '14px',
-                  backgroundColor: 'var(--color-primary)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '10px',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}>
-                  Buy Now
-                </button>
-                <button
-                  onClick={() => setBookmarked(prev => !prev)}
-                  style={{
+            {/* Sold banner */}
+            {isSold && (
+              <div style={{
+                background: '#f3f4f6',
+                border: '1px solid var(--color-border)',
+                borderRadius: '10px',
+                padding: '12px',
+                textAlign: 'center',
+                color: 'var(--color-text-muted)',
+                fontWeight: 600,
+                marginBottom: '8px',
+              }}>
+                This item has been sold
+              </div>
+            )}
+
+            {/* Buy / login buttons — only when active */}
+            {!isSold && (
+              user ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {isOwnListing ? (
+                    <div style={{
+                      padding: '12px',
+                      background: 'var(--color-background)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '10px',
+                      textAlign: 'center',
+                      fontSize: '0.875rem',
+                      color: 'var(--color-text-muted)',
+                    }}>
+                      This is your listing
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowCheckout(true)}
+                      style={{
+                        width: '100%',
+                        padding: '14px',
+                        backgroundColor: 'var(--color-primary)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '10px',
+                        fontSize: '1rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Buy Now
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setBookmarked(prev => !prev)}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      backgroundColor: 'transparent',
+                      color: bookmarked ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                      border: `1px solid ${bookmarked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      borderRadius: '10px',
+                      fontSize: '0.95rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {bookmarked ? '🔖 Bookmarked' : '🔖 Bookmark'}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <Link to="/login" style={{
+                    display: 'block',
                     width: '100%',
-                    padding: '12px',
-                    backgroundColor: 'transparent',
-                    color: bookmarked ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                    border: `1px solid ${bookmarked ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                    padding: '14px',
+                    backgroundColor: 'var(--color-primary)',
+                    color: '#fff',
                     borderRadius: '10px',
-                    fontSize: '0.95rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {bookmarked ? '🔖 Bookmarked' : '🔖 Bookmark'}
-                </button>
-              </div>
-            ) : (
-              <div>
-                <Link to="/login" style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '14px',
-                  backgroundColor: 'var(--color-primary)',
-                  color: '#fff',
-                  borderRadius: '10px',
-                  textDecoration: 'none',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  textAlign: 'center',
-                  boxSizing: 'border-box',
-                }}>
-                  Log in to Buy
-                </Link>
-                <p style={{
-                  textAlign: 'center',
-                  fontSize: '0.8rem',
-                  color: 'var(--color-text-muted)',
-                  marginTop: '0.75rem',
-                }}>
-                  You need an account to purchase or bookmark items
-                </p>
-              </div>
+                    textDecoration: 'none',
+                    fontSize: '1rem',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    boxSizing: 'border-box',
+                  }}>
+                    Log in to Buy
+                  </Link>
+                  <p style={{
+                    textAlign: 'center',
+                    fontSize: '0.8rem',
+                    color: 'var(--color-text-muted)',
+                    marginTop: '0.75rem',
+                  }}>
+                    You need an account to purchase or bookmark items
+                  </p>
+                </div>
+              )
             )}
           </div>
 

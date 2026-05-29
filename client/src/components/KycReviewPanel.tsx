@@ -19,7 +19,6 @@ interface KycRequest {
     city?: string
     postal_code?: string
   } | null
-  applicant: { full_name: string | null; email: string | null }[] | null
 }
 
 const ID_TYPE_LABELS: Record<string, string> = {
@@ -85,11 +84,7 @@ export default function KycReviewPanel() {
         submitted_at,
         reviewed_at,
         rejection_reason,
-        submitted_documents,
-        applicant:user_id (
-          full_name,
-          email
-        )
+        submitted_documents
       `)
       .order('submitted_at', { ascending: false })
 
@@ -133,10 +128,11 @@ export default function KycReviewPanel() {
     if (reqError) { setActionLoading(null); return }
 
     // 2. Update seller_profiles kyc_status
+    const userId = await getUserIdFromRequestId(request.id)
     const { error: spError } = await supabase
       .from('seller_profiles')
       .update({ kyc_status: 'approved' })
-      .eq('user_id', request.applicant?.[0] ? await getUserIdFromRequestId(request.id) : '')
+      .eq('user_id', userId)
 
     if (spError) console.error('seller_profiles update failed:', spError)
 
@@ -237,7 +233,6 @@ export default function KycReviewPanel() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {filtered.map((req) => {
             const isExpanded = expandedId === req.id
-            const applicant = req.applicant?.[0]
             const docs = req.submitted_documents
 
             return (
@@ -268,10 +263,10 @@ export default function KycReviewPanel() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', fontSize: '0.95rem' }}>
-                      {applicant?.full_name ?? 'Unknown'}
+                      {req.submitted_documents?.full_legal_name ?? '—'}
                     </span>
-                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
-                      {applicant?.email ?? '—'}
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.82rem', fontFamily: 'monospace' }}>
+                      #{req.id.slice(0, 8)}
                     </span>
                     <StatusPill status={req.status} />
                   </div>
