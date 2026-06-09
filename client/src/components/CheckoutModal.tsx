@@ -6,12 +6,12 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js'
-import { supabase } from '../lib/supabase'
 
-// Initialise Stripe outside component to avoid re-creating on render
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+const SERVER_URL = 'http://localhost:5000'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface CheckoutModalProps {
   listing: {
@@ -26,17 +26,11 @@ interface CheckoutModalProps {
   onSuccess: () => void
 }
 
-// ─── Inner form (has access to Stripe context) ────────────────────────────────
+// ─── Inner form ───────────────────────────────────────────────────────────────
 
-function CheckoutForm({
-  listing,
-  buyerId,
-  onClose,
-  onSuccess,
-}: CheckoutModalProps) {
+function CheckoutForm({ listing, buyerId, onClose, onSuccess }: CheckoutModalProps) {
   const stripe = useStripe()
   const elements = useElements()
-
   const [processing, setProcessing] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -49,6 +43,7 @@ function CheckoutForm({
     setProcessing(true)
     setErrorMessage(null)
 
+    // Step 1 — validate elements
     const { error: submitError } = await elements.submit()
     if (submitError) {
       setErrorMessage(submitError.message ?? 'Payment failed.')
@@ -56,7 +51,7 @@ function CheckoutForm({
       return
     }
 
-    // Confirm payment with Stripe
+    // Step 2 — confirm payment with Stripe
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
       redirect: 'if_required',
@@ -69,29 +64,27 @@ function CheckoutForm({
     }
 
     if (paymentIntent?.status === 'succeeded') {
-      // Create order in Supabase
-      const { error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          listing_id: listing.id,
-          buyer_id: buyerId,
-          seller_id: listing.seller_id,
-          stripe_payment_id: paymentIntent.id,
-          amount: listing.price,
-          status: 'paid',
+      // Step 3 — tell our server to create the order and mark listing sold
+      // Server verifies with Stripe independently, so this can't be faked
+      try {
+        const res = await fetch(`${SERVER_URL}/api/payments/confirm-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentIntentId: paymentIntent.id,
+            listingId: listing.id,
+            buyerId,
+            sellerId: listing.seller_id,
+            amount: listing.price,
+          }),
         })
-
-      if (orderError) {
-        console.error('Order creation failed:', orderError)
-        // Payment succeeded but order write failed — log and continue
-        // In production this would be handled by a Stripe webhook instead
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Order confirmation failed')
+      } catch (err: unknown) {
+        // Payment succeeded but order write failed — show warning but still
+        // treat as success since money moved. In production a webhook handles this.
+        console.error('Order confirmation error:', err)
       }
-
-      // Mark listing as sold
-      await supabase
-        .from('listings')
-        .update({ status: 'sold' })
-        .eq('id', listing.id)
 
       onSuccess()
     }
@@ -101,30 +94,31 @@ function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{
-          background: 'var(--color-background)',
-          border: '1px solid var(--color-border)',
-          borderRadius: '10px',
-          padding: '14px 16px',
-          marginBottom: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}>
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
-              {listing.title}
-            </div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-              One-time payment
-            </div>
+      {/* Order summary */}
+      <div style={{
+        background: 'var(--color-background)',
+        border: '1px solid var(--color-border)',
+        borderRadius: '10px',
+        padding: '14px 16px',
+        marginBottom: '20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+      }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
+            {listing.title}
           </div>
-          <div style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--color-primary)' }}>
-            {currencySymbol}{listing.price.toLocaleString()}
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+            One-time payment
           </div>
         </div>
+        <div style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--color-primary)' }}>
+          {currencySymbol}{listing.price.toLocaleString()}
+        </div>
+      </div>
 
+      <div style={{ marginBottom: '24px' }}>
         <PaymentElement />
       </div>
 
@@ -187,22 +181,17 @@ function CheckoutForm({
   )
 }
 
-// ─── Outer modal (fetches clientSecret, wraps Elements) ───────────────────────
+// ─── Outer modal ──────────────────────────────────────────────────────────────
 
-export default function CheckoutModal({
-  listing,
-  buyerId,
-  onClose,
-  onSuccess,
-}: CheckoutModalProps) {
+export default function CheckoutModal({ listing, buyerId, onClose, onSuccess }: CheckoutModalProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [succeeded, setSucceeded] = useState(false)
 
-  // Fetch payment intent as soon as modal mounts
   const fetchIntent = useCallback(async () => {
+    setLoadError(null)
     try {
-      const res = await fetch('http://localhost:3000/api/payments/create-payment-intent', {
+      const res = await fetch(`${SERVER_URL}/api/payments/create-payment-intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ listingId: listing.id, buyerId }),
@@ -215,7 +204,7 @@ export default function CheckoutModal({
     }
   }, [listing.id, buyerId])
 
-  // Fetch on first render
+  // Fetch on mount
   useState(() => { fetchIntent() })
 
   function handleSuccess() {
@@ -226,7 +215,6 @@ export default function CheckoutModal({
   const currencySymbol = listing.currency === 'EUR' ? '€' : listing.currency
 
   return (
-    // Backdrop
     <div
       onClick={onClose}
       style={{
@@ -240,7 +228,6 @@ export default function CheckoutModal({
         padding: '24px',
       }}
     >
-      {/* Modal */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -267,7 +254,7 @@ export default function CheckoutModal({
           </button>
         </div>
 
-        {/* Success state */}
+        {/* Success */}
         {succeeded && (
           <div style={{ textAlign: 'center', padding: '32px 0' }}>
             <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🎉</div>
@@ -279,7 +266,7 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {/* Error loading intent */}
+        {/* Load error */}
         {!succeeded && loadError && (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: '2rem', marginBottom: '12px' }}>❌</div>
@@ -301,14 +288,14 @@ export default function CheckoutModal({
           </div>
         )}
 
-        {/* Loading intent */}
+        {/* Loading */}
         {!succeeded && !loadError && !clientSecret && (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--color-text-muted)' }}>
             Preparing payment…
           </div>
         )}
 
-        {/* Stripe Elements form */}
+        {/* Stripe form */}
         {!succeeded && !loadError && clientSecret && (
           <Elements
             stripe={stripePromise}
@@ -316,10 +303,7 @@ export default function CheckoutModal({
               clientSecret,
               appearance: {
                 theme: 'stripe',
-                variables: {
-                  colorPrimary: '#f97316',
-                  borderRadius: '8px',
-                },
+                variables: { colorPrimary: '#f97316', borderRadius: '8px' },
               },
             }}
           >
