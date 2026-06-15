@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
@@ -57,8 +57,11 @@ export default function ItemDetail() {
   const [error, setError] = useState<string | null>(null)
   const [activeImage, setActiveImage] = useState(0)
   const [bookmarked, setBookmarked] = useState(false)
+  const [bookmarkId, setBookmarkId] = useState<string | null>(null)
+  const [bookmarkLoading, setBookmarkLoading] = useState(false)
   const [showCheckout, setShowCheckout] = useState(false)
 
+  // Fetch listing data
   useEffect(() => {
     const fetchListing = async () => {
       if (!id) return
@@ -98,9 +101,52 @@ export default function ItemDetail() {
         setLoading(false)
       }
     }
-
     fetchListing()
   }, [id])
+
+  // Check if already bookmarked
+  const fetchBookmarkStatus = useCallback(async () => {
+    if (!user || !id) return
+    const { data } = await supabase
+      .from('bookmarks')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('listing_id', id)
+      .maybeSingle()
+    if (data) {
+      setBookmarked(true)
+      setBookmarkId(data.id)
+    } else {
+      setBookmarked(false)
+      setBookmarkId(null)
+    }
+  }, [user, id])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchBookmarkStatus()
+  }, [fetchBookmarkStatus])
+
+  async function handleBookmarkToggle() {
+    if (!user || !id || bookmarkLoading) return
+    setBookmarkLoading(true)
+    if (bookmarked && bookmarkId) {
+      await supabase.from('bookmarks').delete().eq('id', bookmarkId)
+      setBookmarked(false)
+      setBookmarkId(null)
+    } else {
+      const { data } = await supabase
+        .from('bookmarks')
+        .insert({ user_id: user.id, listing_id: id })
+        .select('id')
+        .single()
+      if (data) {
+        setBookmarked(true)
+        setBookmarkId(data.id)
+      }
+    }
+    setBookmarkLoading(false)
+  }
 
   function handlePurchaseSuccess() {
     setShowCheckout(false)
@@ -374,7 +420,8 @@ export default function ItemDetail() {
                     </button>
                   )}
                   <button
-                    onClick={() => setBookmarked(prev => !prev)}
+                    onClick={handleBookmarkToggle}
+                    disabled={bookmarkLoading}
                     style={{
                       width: '100%',
                       padding: '12px',
@@ -384,10 +431,10 @@ export default function ItemDetail() {
                       borderRadius: '10px',
                       fontSize: '0.95rem',
                       fontWeight: 600,
-                      cursor: 'pointer',
+                      cursor: bookmarkLoading ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    {bookmarked ? '🔖 Bookmarked' : '🔖 Bookmark'}
+                    {bookmarkLoading ? '…' : bookmarked ? '🔖 Bookmarked' : '🔖 Bookmark'}
                   </button>
                 </div>
               ) : (

@@ -12,6 +12,9 @@ import DatabaseItemDetail from './pages/DatabaseItemDetail'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import BuyerDashboard from './pages/BuyerDashboard'
+import BuyerOrders from './pages/BuyerOrders'
+import BuyerBookmarks from './pages/BuyerBookmarks'
+import BuyerSupport from './pages/BuyerSupport'
 import SellerDashboard from './pages/SellerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import NotFound from './pages/NotFound'
@@ -29,12 +32,8 @@ function ProtectedRoute({ children, requiredRole }: {
   if (authLoading || profileLoading) {
     return (
       <div style={{
-        minHeight: '80vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--color-text-secondary)',
-        fontSize: '1rem',
+        minHeight: '80vh', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', color: 'var(--color-text-secondary)', fontSize: '1rem',
       }}>
         Loading...
       </div>
@@ -64,37 +63,40 @@ export default function App() {
         <Route path="/database/:id" element={<MainLayout><DatabaseItemDetail /></MainLayout>} />
         <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
         <Route path="/register" element={<MainLayout><Register /></MainLayout>} />
-        {/* Protected routes */}
+
+        {/* Buyer routes */}
         <Route path="/dashboard/buyer" element={
-          <ProtectedRoute requiredRole="buyer">
-            <BuyerDashboard />
-          </ProtectedRoute>
+          <ProtectedRoute requiredRole="buyer"><BuyerDashboard /></ProtectedRoute>
         } />
+        <Route path="/dashboard/buyer/orders" element={
+          <ProtectedRoute requiredRole="buyer"><BuyerOrders /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/buyer/bookmarks" element={
+          <ProtectedRoute requiredRole="buyer"><BuyerBookmarks /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/buyer/support" element={
+          <ProtectedRoute requiredRole="buyer"><BuyerSupport /></ProtectedRoute>
+        } />
+
+        {/* Seller routes */}
         <Route path="/dashboard/seller" element={
-          <ProtectedRoute requiredRole="seller">
-            <SellerDashboard />
-          </ProtectedRoute>
-        } />
-        <Route path="/dashboard/admin" element={
-          <ProtectedRoute requiredRole="admin">
-            <AdminDashboard />
-          </ProtectedRoute>
+          <ProtectedRoute requiredRole="seller"><SellerDashboard /></ProtectedRoute>
         } />
         <Route path="/dashboard/seller/listings" element={
-          <ProtectedRoute requiredRole="seller">
-            <SellerListings />
-          </ProtectedRoute>
+          <ProtectedRoute requiredRole="seller"><SellerListings /></ProtectedRoute>
         } />
         <Route path="/dashboard/seller/create" element={
-          <ProtectedRoute requiredRole="seller">
-            <CreateListing />
-          </ProtectedRoute>
+          <ProtectedRoute requiredRole="seller"><CreateListing /></ProtectedRoute>
         } />
         <Route path="/dashboard/seller/kyc" element={
-          <ProtectedRoute requiredRole="seller">
-            <KycSubmission />
-          </ProtectedRoute>
+          <ProtectedRoute requiredRole="seller"><KycSubmission /></ProtectedRoute>
         } />
+
+        {/* Admin routes */}
+        <Route path="/dashboard/admin" element={
+          <ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>
+        } />
+
         {/* Fallback */}
         <Route path="*" element={<MainLayout><NotFound /></MainLayout>} />
       </Routes>
