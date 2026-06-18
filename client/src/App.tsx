@@ -17,6 +17,8 @@ import BuyerBookmarks from './pages/BuyerBookmarks'
 import BuyerSupport from './pages/BuyerSupport'
 import SellerDashboard from './pages/SellerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminTickets from './pages/AdminTickets'
+import AdminKycRequests from './pages/AdminKycRequests'
 import NotFound from './pages/NotFound'
 import CreateListing from './pages/CreateListing'
 import SellerListings from './pages/SellerListings'
@@ -95,6 +97,12 @@ export default function App() {
         {/* Admin routes */}
         <Route path="/dashboard/admin" element={
           <ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/tickets" element={
+          <ProtectedRoute requiredRole="admin"><AdminTickets /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/kyc-requests" element={
+          <ProtectedRoute requiredRole="admin"><AdminKycRequests /></ProtectedRoute>
         } />
 
         {/* Fallback */}

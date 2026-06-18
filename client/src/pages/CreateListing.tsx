@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { uploadListingImages } from '../lib/storage'
 import { useAuth } from '../hooks/useAuth'
 import DashboardLayout from '../layouts/DashboardLayout'
 
@@ -41,19 +42,88 @@ const conditionColors: Record<Condition, string> = {
   poor: '#ef4444',
 }
 
+const MAX_IMAGES = 5
+const MAX_FILE_SIZE_MB = 5
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
 export default function CreateListing() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [price, setPrice] = useState('')
   const [category, setCategory] = useState<Category | ''>('')
   const [condition, setCondition] = useState<Condition | ''>('')
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const isValid = title.trim() && description.trim() && price && parseFloat(price) > 0 && category && condition
+  const isValid =
+    title.trim() &&
+    description.trim() &&
+    price &&
+    parseFloat(price) > 0 &&
+    category &&
+    condition
+
+  // ─── Image handling ──────────────────────────────────────────────────────────
+
+  const handleImageFiles = (files: FileList | null) => {
+    if (!files) return
+    const incoming = Array.from(files)
+    const remaining = MAX_IMAGES - imageFiles.length
+
+    if (remaining <= 0) {
+      setError(`Maximum ${MAX_IMAGES} images allowed.`)
+      return
+    }
+
+    const toAdd: File[] = []
+    for (const file of incoming.slice(0, remaining)) {
+      if (!ACCEPTED_TYPES.includes(file.type)) {
+        setError('Only JPEG, PNG, and WebP images are supported.')
+        return
+      }
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        setError(`Each image must be under ${MAX_FILE_SIZE_MB}MB.`)
+        return
+      }
+      toAdd.push(file)
+    }
+
+    setError(null)
+    const newFiles = [...imageFiles, ...toAdd]
+    setImageFiles(newFiles)
+
+    // Generate previews
+    toAdd.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = e => {
+        setImagePreviews(prev => [...prev, e.target?.result as string])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const removeImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    handleImageFiles(e.dataTransfer.files)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+  }
+
+  // ─── Submit ──────────────────────────────────────────────────────────────────
 
   const handleSubmit = async () => {
     if (!isValid || !user) return
@@ -61,7 +131,9 @@ export default function CreateListing() {
     setLoading(true)
 
     try {
-      const { error: insertError } = await supabase
+      // 1. Insert listing first to get the ID
+      setUploadProgress('Creating listing...')
+      const { data: listing, error: insertError } = await supabase
         .from('listings')
         .insert({
           seller_id: user.id,
@@ -74,14 +146,35 @@ export default function CreateListing() {
           status: 'active',
           images: [],
         })
+        .select('id')
+        .single()
 
       if (insertError) throw insertError
+
+      // 2. Upload images if any
+      let imageUrls: string[] = []
+      if (imageFiles.length > 0) {
+        setUploadProgress(`Uploading ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''}...`)
+        imageUrls = await uploadListingImages(imageFiles, user.id, listing.id)
+
+        // 3. Update listing with image URLs
+        const { error: updateError } = await supabase
+          .from('listings')
+          .update({ images: imageUrls })
+          .eq('id', listing.id)
+
+        if (updateError) throw updateError
+      }
+
       navigate('/dashboard/seller/listings')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create listing')
       setLoading(false)
+      setUploadProgress(null)
     }
   }
+
+  // ─── Styles ──────────────────────────────────────────────────────────────────
 
   const inputStyle = {
     width: '100%',
@@ -134,7 +227,6 @@ export default function CreateListing() {
           <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '1.25rem' }}>
             Basic Information
           </h2>
-
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             <div>
               <label style={labelStyle}>Listing Title</label>
@@ -150,7 +242,6 @@ export default function CreateListing() {
                 {title.length}/120 characters
               </div>
             </div>
-
             <div>
               <label style={labelStyle}>Description</label>
               <textarea
@@ -158,12 +249,7 @@ export default function CreateListing() {
                 onChange={e => setDescription(e.target.value)}
                 placeholder="Describe your item accurately. Include relevant details such as edition, print run, visible flaws, storage history, and anything a buyer should know."
                 rows={6}
-                style={{
-                  ...inputStyle,
-                  resize: 'vertical',
-                  fontFamily: 'inherit',
-                  lineHeight: 1.6,
-                }}
+                style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6 }}
               />
             </div>
           </div>
@@ -174,11 +260,7 @@ export default function CreateListing() {
           <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '1.25rem' }}>
             Category
           </h2>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-            gap: '0.75rem',
-          }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem' }}>
             {categories.map(cat => (
               <button
                 key={cat.value}
@@ -277,10 +359,7 @@ export default function CreateListing() {
               placeholder="0.00"
               min="0.01"
               step="0.01"
-              style={{
-                ...inputStyle,
-                paddingLeft: '2rem',
-              }}
+              style={{ ...inputStyle, paddingLeft: '2rem' }}
             />
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
@@ -288,25 +367,118 @@ export default function CreateListing() {
           </div>
         </div>
 
-        {/* Images placeholder */}
+        {/* Images */}
         <div style={sectionStyle}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '0.5rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)', marginBottom: '0.25rem' }}>
             Images
           </h2>
-          <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-            Image upload coming soon. For now, listings will display a category placeholder.
+          <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+            Up to {MAX_IMAGES} images · JPEG, PNG or WebP · Max {MAX_FILE_SIZE_MB}MB each
           </p>
-          <div style={{
-            border: '2px dashed var(--color-border)',
-            borderRadius: '10px',
-            padding: '2rem',
-            textAlign: 'center',
-            color: 'var(--color-text-muted)',
-            fontSize: '0.875rem',
-          }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
-            Image upload will be available in a future update
-          </div>
+
+          {/* Drop zone — only shown when under the limit */}
+          {imageFiles.length < MAX_IMAGES && (
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: '2px dashed var(--color-border)',
+                borderRadius: '10px',
+                padding: '2rem',
+                textAlign: 'center',
+                cursor: 'pointer',
+                color: 'var(--color-text-muted)',
+                fontSize: '0.875rem',
+                marginBottom: imagePreviews.length > 0 ? '1rem' : 0,
+                transition: 'border-color 0.15s ease',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+            >
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem', color: 'var(--color-text-secondary)' }}>
+                Click or drag images here
+              </div>
+              <div>{MAX_IMAGES - imageFiles.length} slot{MAX_IMAGES - imageFiles.length !== 1 ? 's' : ''} remaining</div>
+            </div>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            style={{ display: 'none' }}
+            onChange={e => handleImageFiles(e.target.files)}
+          />
+
+          {/* Previews grid */}
+          {imagePreviews.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+              gap: '0.75rem',
+            }}>
+              {imagePreviews.map((src, i) => (
+                <div
+                  key={i}
+                  style={{
+                    position: 'relative',
+                    aspectRatio: '1',
+                    borderRadius: '8px',
+                    overflow: 'hidden',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  <img
+                    src={src}
+                    alt={`Preview ${i + 1}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  {/* Badge for first image */}
+                  {i === 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '4px',
+                      left: '4px',
+                      backgroundColor: 'var(--color-primary)',
+                      color: '#fff',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                    }}>
+                      Cover
+                    </div>
+                  )}
+                  {/* Remove button */}
+                  <button
+                    onClick={() => removeImage(i)}
+                    style={{
+                      position: 'absolute',
+                      top: '4px',
+                      right: '4px',
+                      width: '22px',
+                      height: '22px',
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(0,0,0,0.6)',
+                      color: '#fff',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Submit */}
@@ -345,11 +517,13 @@ export default function CreateListing() {
               fontWeight: 700,
               cursor: !isValid || loading ? 'not-allowed' : 'pointer',
               transition: 'opacity 0.15s ease',
+              minWidth: '180px',
             }}
           >
-            {loading ? 'Publishing...' : 'Publish Listing'}
+            {loading ? (uploadProgress ?? 'Publishing...') : 'Publish Listing'}
           </button>
         </div>
+
       </div>
     </DashboardLayout>
   )

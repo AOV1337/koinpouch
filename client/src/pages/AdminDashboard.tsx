@@ -6,11 +6,12 @@ import {
 } from 'recharts'
 import DashboardLayout from '../layouts/DashboardLayout'
 import KycReviewPanel from '../components/KycReviewPanel'
+import AdminTicketsPanel from '../components/AdminTicketsPanel'
 import { supabase } from '../lib/supabase'
 
 const sidebarItems = [
   { label: 'Overview', path: '/dashboard/admin', icon: '📊' },
-  { label: 'KYC Review', path: '/dashboard/admin/kyc', icon: '🪪' },
+  { label: 'KYC Review', path: '/dashboard/admin/kyc-requests', icon: '🪪' },
   { label: 'Support Tickets', path: '/dashboard/admin/tickets', icon: '🎧' },
   { label: 'User Manager', path: '/dashboard/admin/users', icon: '👥' },
   { label: 'Item Database', path: '/dashboard/admin/database', icon: '🗄️' },
@@ -95,7 +96,7 @@ function buildCategoryBreakdown(
   }))
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats>({
@@ -124,7 +125,7 @@ export default function AdminDashboard() {
       supabase.from('listings').select('*', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('kyc_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-      supabase.from('orders').select('amount, created_at, listing:listing_id(category)'),
+      supabase.from('orders').select('amount, created_at, listings(category)'),
     ])
 
     const orders = (ordersData ?? []) as unknown as { amount: number; created_at: string; listing: { category: string }[] | null }[]
@@ -341,14 +342,7 @@ export default function AdminDashboard() {
         </div>
 
         <div style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '12px', padding: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>🎧 Open Support Tickets</h2>
-            <span style={{ fontSize: '0.85rem', color: 'var(--color-primary)', cursor: 'pointer', fontWeight: 600 }}>View all →</span>
-          </div>
-          <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-            <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎉</div>
-            No open support tickets
-          </div>
+          <AdminTicketsPanel />
         </div>
       </div>
 

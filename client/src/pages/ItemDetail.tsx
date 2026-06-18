@@ -61,7 +61,6 @@ export default function ItemDetail() {
   const [bookmarkLoading, setBookmarkLoading] = useState(false)
   const [showCheckout, setShowCheckout] = useState(false)
 
-  // Fetch listing data
   useEffect(() => {
     const fetchListing = async () => {
       if (!id) return
@@ -104,7 +103,6 @@ export default function ItemDetail() {
     fetchListing()
   }, [id])
 
-  // Check if already bookmarked
   const fetchBookmarkStatus = useCallback(async () => {
     if (!user || !id) return
     const { data } = await supabase
@@ -150,7 +148,6 @@ export default function ItemDetail() {
 
   function handlePurchaseSuccess() {
     setShowCheckout(false)
-    // Refresh listing so status shows as sold
     setListing((prev) => prev ? { ...prev, status: 'sold' } : prev)
   }
 
@@ -187,15 +184,23 @@ export default function ItemDetail() {
     </div>
   )
 
-  const images = listing.images && listing.images.length > 0 ? listing.images : [null]
+  const images = listing.images && listing.images.length > 0 ? listing.images : []
+  const hasImages = images.length > 0
   const currencySymbol = listing.currency === 'EUR' ? '€' : listing.currency
   const isSold = listing.status === 'sold'
   const isOwnListing = user?.id === listing.seller_id
 
+  function prevImage() {
+    setActiveImage(i => (i - 1 + images.length) % images.length)
+  }
+
+  function nextImage() {
+    setActiveImage(i => (i + 1) % images.length)
+  }
+
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
 
-      {/* Checkout modal */}
       {showCheckout && user && (
         <CheckoutModal
           listing={{
@@ -242,7 +247,6 @@ export default function ItemDetail() {
 
         {/* Left column */}
         <div>
-
           {/* Image carousel */}
           <div style={{
             backgroundColor: 'var(--color-surface)',
@@ -251,20 +255,118 @@ export default function ItemDetail() {
             overflow: 'hidden',
             marginBottom: '1.5rem',
           }}>
+            {/* Main image area */}
             <div style={{
+              position: 'relative',
               height: '420px',
               backgroundColor: 'var(--color-primary-light)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '8rem',
             }}>
-              {images[activeImage]
-                ? <img src={images[activeImage]!} alt={listing.title} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                : categoryEmoji[listing.category] ?? '📦'
-              }
+              {hasImages ? (
+                <>
+                  <img
+                    src={images[activeImage]}
+                    alt={`${listing.title} — image ${activeImage + 1}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+
+                  {images.length > 1 && (
+                    <>
+                      {/* Prev arrow */}
+                      <button
+                        onClick={prevImage}
+                        aria-label="Previous image"
+                        style={{
+                          position: 'absolute',
+                          left: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          backgroundColor: 'rgba(0,0,0,0.45)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '36px',
+                          height: '36px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontSize: '1.25rem',
+                          zIndex: 2,
+                          backdropFilter: 'blur(4px)',
+                        }}
+                      >
+                        ‹
+                      </button>
+
+                      {/* Next arrow */}
+                      <button
+                        onClick={nextImage}
+                        aria-label="Next image"
+                        style={{
+                          position: 'absolute',
+                          right: '12px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          backgroundColor: 'rgba(0,0,0,0.45)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '36px',
+                          height: '36px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                          fontSize: '1.25rem',
+                          zIndex: 2,
+                          backdropFilter: 'blur(4px)',
+                        }}
+                      >
+                        ›
+                      </button>
+
+                      {/* Dot indicators */}
+                      <div style={{
+                        position: 'absolute',
+                        bottom: '10px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        gap: '6px',
+                      }}>
+                        {images.map((_, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setActiveImage(idx)}
+                            style={{
+                              width: activeImage === idx ? '20px' : '8px',
+                              height: '8px',
+                              borderRadius: '999px',
+                              border: 'none',
+                              backgroundColor: activeImage === idx
+                                ? 'var(--color-primary)'
+                                : 'rgba(255,255,255,0.6)',
+                              cursor: 'pointer',
+                              padding: 0,
+                              transition: 'all 0.2s ease',
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span style={{ fontSize: '8rem' }}>
+                  {categoryEmoji[listing.category] ?? '📦'}
+                </span>
+              )}
             </div>
 
+            {/* Thumbnail strip */}
             {images.length > 1 && (
               <div style={{
                 display: 'flex',
@@ -287,12 +389,10 @@ export default function ItemDetail() {
                       cursor: 'pointer',
                       overflow: 'hidden',
                       padding: 0,
+                      transition: 'border-color 0.15s ease',
                     }}
                   >
-                    {img
-                      ? <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <span style={{ fontSize: '1.5rem' }}>{categoryEmoji[listing.category]}</span>
-                    }
+                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </button>
                 ))}
               </div>
@@ -369,7 +469,6 @@ export default function ItemDetail() {
               </span>
             </div>
 
-            {/* Sold banner */}
             {isSold && (
               <div style={{
                 background: '#f3f4f6',
@@ -385,7 +484,6 @@ export default function ItemDetail() {
               </div>
             )}
 
-            {/* Buy / login buttons — only when active */}
             {!isSold && (
               user ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

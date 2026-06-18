@@ -51,7 +51,7 @@ export default function BuyerOrders() {
       .from('orders')
       .select(`
         id, amount, status, created_at,
-        listings(id, title, category, condition),
+        listings!orders_listing_id_fkey(id, title, category, condition),
         profiles!orders_seller_id_fkey(full_name)
       `)
       .eq('buyer_id', user.id)

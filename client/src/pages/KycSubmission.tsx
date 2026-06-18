@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
+import { uploadKycDocument } from '../lib/storage'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,9 @@ const ID_TYPE_LABELS: Record<string, string> = {
   passport: 'Passport',
   drivers_license: "Driver's License",
 }
+
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const MAX_FILE_SIZE_MB = 8
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -124,6 +128,116 @@ function StatusBanner({ request, onResubmit }: { request: ExistingRequest; onRes
   return null
 }
 
+// Single document upload slot (ID front, ID back, selfie)
+function DocumentUploadSlot({
+  label,
+  description,
+  preview,
+  onSelect,
+  onClear,
+}: {
+  label: string
+  description: string
+  preview: string | null
+  onSelect: (file: File) => void
+  onClear: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const file = files[0]
+    if (!ACCEPTED_TYPES.includes(file.type)) {
+      alert('Only JPEG, PNG, and WebP images are supported.')
+      return
+    }
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      alert(`File must be under ${MAX_FILE_SIZE_MB}MB.`)
+      return
+    }
+    onSelect(file)
+  }
+
+  return (
+    <div>
+      <label style={{
+        display: 'block',
+        fontSize: '0.85rem',
+        fontWeight: 600,
+        color: 'var(--color-text-secondary)',
+        marginBottom: '6px',
+      }}>
+        {label}<span style={{ color: '#f97316', marginLeft: '3px' }}>*</span>
+      </label>
+      <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: '0 0 8px' }}>
+        {description}
+      </p>
+
+      {preview ? (
+        <div style={{
+          position: 'relative',
+          border: '1px solid var(--color-border)',
+          borderRadius: '10px',
+          overflow: 'hidden',
+          height: '160px',
+          backgroundColor: 'var(--color-background)',
+        }}>
+          <img src={preview} alt={label} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <button
+            type="button"
+            onClick={onClear}
+            style={{
+              position: 'absolute',
+              top: '8px',
+              right: '8px',
+              width: '26px',
+              height: '26px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ) : (
+        <div
+          onClick={() => inputRef.current?.click()}
+          style={{
+            border: '2px dashed var(--color-border)',
+            borderRadius: '10px',
+            padding: '1.5rem',
+            textAlign: 'center',
+            cursor: 'pointer',
+            color: 'var(--color-text-muted)',
+            fontSize: '0.85rem',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+        >
+          <div style={{ fontSize: '1.5rem', marginBottom: '0.35rem' }}>📷</div>
+          Click to upload
+        </div>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        style={{ display: 'none' }}
+        onChange={e => handleFiles(e.target.files)}
+      />
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function KycSubmission() {
@@ -135,8 +249,17 @@ export default function KycSubmission() {
   const [form, setForm] = useState<KycFormData>(EMPTY_FORM)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadStep, setUploadStep] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  // Document files + previews
+  const [idFrontFile, setIdFrontFile] = useState<File | null>(null)
+  const [idFrontPreview, setIdFrontPreview] = useState<string | null>(null)
+  const [idBackFile, setIdBackFile] = useState<File | null>(null)
+  const [idBackPreview, setIdBackPreview] = useState<string | null>(null)
+  const [selfieFile, setSelfieFile] = useState<File | null>(null)
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(null)
 
   // ── Fetch existing request ─────────────────────────────────────────────────
 
@@ -154,7 +277,6 @@ export default function KycSubmission() {
 
     if (!fetchError && data) {
       setExistingRequest(data as ExistingRequest)
-      // Only show the form automatically if there's no request yet
       setShowForm(false)
     } else {
       setExistingRequest(null)
@@ -177,6 +299,25 @@ export default function KycSubmission() {
     setError(null)
   }
 
+  function filePreview(file: File, setPreview: (url: string) => void) {
+    const reader = new FileReader()
+    reader.onload = e => setPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  function handleIdFrontSelect(file: File) {
+    setIdFrontFile(file)
+    filePreview(file, setIdFrontPreview)
+  }
+  function handleIdBackSelect(file: File) {
+    setIdBackFile(file)
+    filePreview(file, setIdBackPreview)
+  }
+  function handleSelfieSelect(file: File) {
+    setSelfieFile(file)
+    filePreview(file, setSelfiePreview)
+  }
+
   function validate(): string | null {
     if (!form.full_legal_name.trim()) return 'Full legal name is required.'
     if (!form.date_of_birth) return 'Date of birth is required.'
@@ -186,6 +327,9 @@ export default function KycSubmission() {
     if (!form.address_line.trim()) return 'Address is required.'
     if (!form.city.trim()) return 'City is required.'
     if (!form.postal_code.trim()) return 'Postal code is required.'
+    if (!idFrontFile) return 'Please upload the front of your ID document.'
+    if (!idBackFile) return 'Please upload the back of your ID document.'
+    if (!selfieFile) return 'Please upload a selfie holding your ID.'
     return null
   }
 
@@ -193,44 +337,73 @@ export default function KycSubmission() {
     e.preventDefault()
     const validationError = validate()
     if (validationError) { setError(validationError); return }
-    if (!user) return
+    if (!user || !idFrontFile || !idBackFile || !selfieFile) return
 
     setSubmitting(true)
     setError(null)
 
-    const { error: insertError } = await supabase
-      .from('kyc_requests')
-      .insert({
-        user_id: user.id,
-        status: 'pending',
-        submitted_documents: {
-          full_legal_name: form.full_legal_name.trim(),
-          date_of_birth: form.date_of_birth,
-          country: form.country.trim(),
-          id_type: form.id_type,
-          id_number: form.id_number.trim(),
-          address_line: form.address_line.trim(),
-          city: form.city.trim(),
-          postal_code: form.postal_code.trim(),
-        },
-        submitted_at: new Date().toISOString(),
-      })
+    try {
+      // Upload all three documents to the private kyc-documents bucket.
+      // uploadKycDocument returns a signed URL but we only need the storage
+      // PATH for long-term storage — the admin panel will mint fresh signed
+      // URLs on demand since these expire.
+      setUploadStep('Uploading ID front...')
+      await uploadKycDocument(idFrontFile, user.id, 'id_front')
 
-    if (insertError) {
-      setError('Failed to submit your request. Please try again.')
+      setUploadStep('Uploading ID back...')
+      await uploadKycDocument(idBackFile, user.id, 'id_back')
+
+      setUploadStep('Uploading selfie...')
+      await uploadKycDocument(selfieFile, user.id, 'selfie')
+
+      // Build storage paths (not signed URLs) to save permanently
+      const idFrontExt = idFrontFile.name.split('.').pop()
+      const idBackExt = idBackFile.name.split('.').pop()
+      const selfieExt = selfieFile.name.split('.').pop()
+
+      setUploadStep('Submitting request...')
+      const { error: insertError } = await supabase
+        .from('kyc_requests')
+        .insert({
+          user_id: user.id,
+          status: 'pending',
+          submitted_documents: {
+            full_legal_name: form.full_legal_name.trim(),
+            date_of_birth: form.date_of_birth,
+            country: form.country.trim(),
+            id_type: form.id_type,
+            id_number: form.id_number.trim(),
+            address_line: form.address_line.trim(),
+            city: form.city.trim(),
+            postal_code: form.postal_code.trim(),
+            id_front_path: `${user.id}/id_front.${idFrontExt}`,
+            id_back_path: `${user.id}/id_back.${idBackExt}`,
+            selfie_path: `${user.id}/selfie.${selfieExt}`,
+          },
+          submitted_at: new Date().toISOString(),
+        })
+
+      if (insertError) throw insertError
+
+      setSuccess(true)
+      await fetchExistingRequest()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit your request. Please try again.')
+    } finally {
       setSubmitting(false)
-      return
+      setUploadStep(null)
     }
-
-    setSuccess(true)
-    setSubmitting(false)
-    // Refresh to show the pending banner
-    await fetchExistingRequest()
   }
 
   function handleResubmit() {
     setExistingRequest(null)
     setForm(EMPTY_FORM)
+    setIdFrontFile(null)
+    setIdFrontPreview(null)
+    setIdBackFile(null)
+    setIdBackPreview(null)
+    setSelfieFile(null)
+    setSelfiePreview(null)
     setSuccess(false)
     setError(null)
     setShowForm(true)
@@ -273,7 +446,7 @@ export default function KycSubmission() {
         </h1>
         <p style={{ margin: 0, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
           KYC (Know Your Customer) verification allows you to sell items on Koinpouch.
-          Your information is stored securely and only reviewed by our admin team.
+          Your information and documents are stored securely and only reviewed by our admin team.
         </p>
       </div>
 
@@ -359,6 +532,36 @@ export default function KycSubmission() {
             </Field>
           </Section>
 
+          <Section title="Document Photos">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <DocumentUploadSlot
+                label="ID Front"
+                description="Clear photo of the front side"
+                preview={idFrontPreview}
+                onSelect={handleIdFrontSelect}
+                onClear={() => { setIdFrontFile(null); setIdFrontPreview(null) }}
+              />
+              <DocumentUploadSlot
+                label="ID Back"
+                description="Clear photo of the back side"
+                preview={idBackPreview}
+                onSelect={handleIdBackSelect}
+                onClear={() => { setIdBackFile(null); setIdBackPreview(null) }}
+              />
+            </div>
+            <DocumentUploadSlot
+              label="Selfie Holding ID"
+              description="Your face clearly visible, holding the ID document next to it"
+              preview={selfiePreview}
+              onSelect={handleSelfieSelect}
+              onClear={() => { setSelfieFile(null); setSelfiePreview(null) }}
+            />
+            <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: 0 }}>
+              JPEG, PNG or WebP · Max {MAX_FILE_SIZE_MB}MB per file · Documents are stored privately and only visible to our verification team
+            </p>
+          </Section>
+
+          {/* Address */}
           <Section title="Address">
             <Field label="Street Address" required>
               <input
@@ -409,7 +612,7 @@ export default function KycSubmission() {
 
           {/* Disclaimer */}
           <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
-            By submitting, you confirm that the information provided is accurate and belongs to you.
+            By submitting, you confirm that the information and documents provided are accurate and belong to you.
             False information may result in permanent account suspension.
           </p>
 
@@ -429,7 +632,7 @@ export default function KycSubmission() {
               transition: 'background 0.2s',
             }}
           >
-            {submitting ? 'Submitting…' : 'Submit Verification Request'}
+            {submitting ? (uploadStep ?? 'Submitting…') : 'Submit Verification Request'}
           </button>
         </form>
       )}

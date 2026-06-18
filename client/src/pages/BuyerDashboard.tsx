@@ -63,7 +63,7 @@ export default function BuyerDashboard() {
     ] = await Promise.all([
       supabase
         .from('orders')
-        .select('id, amount, status, created_at, listings(id, title, category)')
+        .select('id, amount, status, created_at, listings!orders_listing_id_fkey(id, title, category)')
         .eq('buyer_id', user.id)
         .order('created_at', { ascending: false })
         .limit(5),
@@ -83,12 +83,11 @@ export default function BuyerDashboard() {
     setOrders((ordersData as unknown as Order[]) ?? [])
     setBookmarks((bookmarksData as unknown as Bookmark[]) ?? [])
     setOpenTickets(ticketCount ?? 0)
-
     setLoading(false)
   }, [user])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+// eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData()
   }, [fetchData])
 

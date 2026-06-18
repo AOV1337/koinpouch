@@ -29,7 +29,7 @@ interface RecentOrder {
   amount: number
   status: string
   created_at: string
-  listing: { title: string }[] | null
+  listings: { title: string } | null
 }
 
 interface SalesDataPoint {
@@ -105,7 +105,7 @@ export default function SellerDashboard() {
         .eq('status', 'active'),
       supabase
         .from('orders')
-        .select('id, amount, status, created_at, listing:listing_id(title)')
+        .select('id, amount, status, created_at, listings!orders_listing_id_fkey(title)')
         .eq('seller_id', user.id)
         .order('created_at', { ascending: false }),
     ])
@@ -126,7 +126,7 @@ export default function SellerDashboard() {
   }, [user])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+// eslint-disable-next-line react-hooks/set-state-in-effect
     fetchKycRequest()
     fetchStats()
   }, [fetchKycRequest, fetchStats])
@@ -351,7 +351,7 @@ export default function SellerDashboard() {
               }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text-primary)' }}>
-                    {order.listing?.[0]?.title ?? 'Unknown listing'}
+                    {order.listings?.title ?? 'Unknown listing'}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                     {new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
