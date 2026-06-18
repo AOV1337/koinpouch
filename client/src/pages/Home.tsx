@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { OPEN_CHAT_WIDGET_EVENT } from '../components/ChatWidget'
 
 const categories = [
   { label: 'Trading Cards', emoji: '🃏', path: '/browse?category=cards' },
@@ -38,6 +39,10 @@ const mockListings = [
 ]
 
 export default function Home() {
+  function handleOpenAssistant() {
+    window.dispatchEvent(new Event(OPEN_CHAT_WIDGET_EVENT))
+  }
+
   return (
     <div style={{ backgroundColor: 'var(--color-background)' }}>
 
@@ -434,16 +439,19 @@ export default function Home() {
           }}>
             Not sure what to look for? Ask our AI assistant about grading, authenticity, history or value. It won't replace an expert — but it's always available.
           </p>
-          <button style={{
-            padding: '12px 28px',
-            backgroundColor: 'var(--color-primary)',
-            color: '#fff',
-            borderRadius: '10px',
-            border: 'none',
-            fontWeight: 700,
-            fontSize: '1rem',
-            cursor: 'pointer',
-          }}>
+          <button
+            onClick={handleOpenAssistant}
+            style={{
+              padding: '12px 28px',
+              backgroundColor: 'var(--color-primary)',
+              color: '#fff',
+              borderRadius: '10px',
+              border: 'none',
+              fontWeight: 700,
+              fontSize: '1rem',
+              cursor: 'pointer',
+            }}
+          >
             Try the assistant →
           </button>
         </div>

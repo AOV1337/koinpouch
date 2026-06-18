@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useProfile } from '../hooks/useProfile'
+import { OPEN_CHAT_WIDGET_EVENT } from './ChatWidget'
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
@@ -25,6 +26,10 @@ export default function Navbar() {
   const handleSignOut = async () => {
     await signOut()
     navigate('/')
+  }
+
+  function handleOpenAssistant() {
+    window.dispatchEvent(new Event(OPEN_CHAT_WIDGET_EVENT))
   }
 
 const dashboardPath =
@@ -86,6 +91,27 @@ const dashboardPath =
               {item}
             </Link>
           ))}
+          <button
+            onClick={handleOpenAssistant}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-text-secondary)',
+              fontSize: '0.95rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              padding: 0,
+              fontFamily: 'inherit',
+              transition: 'color 0.15s ease',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-primary)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-secondary)')}
+          >
+            🤖 Assistant
+          </button>
         </div>
 
         {/* Right — Actions */}
