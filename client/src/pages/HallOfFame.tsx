@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { CATEGORY_META, type ListingCategory } from '../lib/listingMeta'
 
 interface Item {
   id: string
@@ -26,13 +27,6 @@ const TAG_OPTIONS = [
 
 const tagColors: Record<string, string> = Object.fromEntries(TAG_OPTIONS.map(t => [t.value, t.color]))
 const tagLabels: Record<string, string> = Object.fromEntries(TAG_OPTIONS.map(t => [t.value, t.label]))
-
-const categoryEmoji: Record<string, string> = {
-  cards: '🃏',
-  figurines: '🗿',
-  coins: '🪙',
-  stamps: '✉️',
-}
 
 const itemTypes = ['All', 'cards', 'coins', 'stamps', 'figurines']
 
@@ -72,7 +66,7 @@ function ItemCard({ item, large }: { item: Item; large?: boolean }) {
         }}>
           {item.image_url
             ? <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : categoryEmoji[item.category] ?? '🏆'
+            : <span>{CATEGORY_META[item.category as ListingCategory]?.emoji ?? '🏆'}</span>
           }
           {item.featured && (
             <div style={{
@@ -215,12 +209,13 @@ export default function HallOfFame() {
               style={{
                 padding: '7px 16px',
                 borderRadius: '999px',
-                border: `2px solid ${selectedTag === tag.value ? tag.color : 'var(--color-border)'}`,
-                backgroundColor: selectedTag === tag.value ? `${tag.color}18` : 'var(--color-surface)',
-                color: selectedTag === tag.value ? tag.color : 'var(--color-text-secondary)',
-                fontWeight: selectedTag === tag.value ? 700 : 500,
+                border: `2px solid ${tag.color}`,
+                backgroundColor: selectedTag === tag.value ? tag.color : `${tag.color}1a`,
+                color: selectedTag === tag.value ? '#fff' : tag.color,
+                fontWeight: selectedTag === tag.value ? 700 : 600,
                 fontSize: '0.85rem',
                 cursor: 'pointer',
+                transition: 'background-color 0.15s ease, color 0.15s ease',
               }}
             >
               {tag.label}
@@ -229,25 +224,32 @@ export default function HallOfFame() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {itemTypes.map(type => (
-            <button
-              key={type}
-              onClick={() => setSelectedType(type)}
-              style={{
-                padding: '5px 14px',
-                borderRadius: '8px',
-                border: '1px solid var(--color-border)',
-                backgroundColor: selectedType === type ? 'var(--color-primary)' : 'transparent',
-                color: selectedType === type ? '#fff' : 'var(--color-text-muted)',
-                fontWeight: selectedType === type ? 700 : 500,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                textTransform: 'capitalize',
-              }}
-            >
-              {type === 'All' ? 'All Categories' : type}
-            </button>
-          ))}
+          {itemTypes.map(type => {
+            const meta = type !== 'All' ? CATEGORY_META[type as ListingCategory] : null
+            return (
+              <button
+                key={type}
+                onClick={() => setSelectedType(type)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '5px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: selectedType === type ? 'var(--color-primary)' : 'transparent',
+                  color: selectedType === type ? '#fff' : 'var(--color-text-muted)',
+                  fontWeight: selectedType === type ? 700 : 500,
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  textTransform: 'capitalize',
+                }}
+              >
+                <span>{type === 'All' ? '🗂️' : meta?.emoji}</span>
+                {type === 'All' ? 'All Categories' : meta?.label ?? type}
+              </button>
+            )
+          })}
         </div>
       </div>
 

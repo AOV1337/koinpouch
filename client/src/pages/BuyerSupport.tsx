@@ -2,14 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import DashboardLayout from '../layouts/DashboardLayout'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-
-const sidebarItems = [
-  { label: 'Overview', path: '/dashboard/buyer', icon: '📊' },
-  { label: 'My Orders', path: '/dashboard/buyer/orders', icon: '📦' },
-  { label: 'Bookmarks', path: '/dashboard/buyer/bookmarks', icon: '🔖' },
-  { label: 'Support', path: '/dashboard/buyer/support', icon: '🎧' },
-  { label: 'Settings', path: '/dashboard/buyer/settings', icon: '⚙️' },
-]
+import { buyerSidebarItems as sidebarItems } from '../lib/buyerSidebar'
 
 type TicketCategory = 'payment' | 'listing' | 'account' | 'other'
 type TicketStatus = 'open' | 'in_progress' | 'closed'
@@ -19,6 +12,13 @@ interface Ticket {
   subject: string
   status: TicketStatus
   category: TicketCategory
+  created_at: string
+}
+
+interface TicketMessage {
+  id: string
+  sender_id: string
+  message: string
   created_at: string
 }
 
@@ -49,6 +49,13 @@ export default function BuyerSupport() {
   const [category, setCategory] = useState<TicketCategory>('other')
   const [message, setMessage] = useState('')
 
+  // Conversation thread state
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null)
+  const [messagesByTicket, setMessagesByTicket] = useState<Record<string, TicketMessage[]>>({})
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
+
   const fetchTickets = useCallback(async () => {
     if (!user) return
     setLoading(true)
@@ -65,6 +72,41 @@ export default function BuyerSupport() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTickets()
   }, [fetchTickets])
+
+  const fetchMessages = useCallback(async (ticketId: string) => {
+    setLoadingMessages(true)
+    const { data } = await supabase
+      .from('ticket_messages')
+      .select('id, sender_id, message, created_at')
+      .eq('ticket_id', ticketId)
+      .order('created_at', { ascending: true })
+    setMessagesByTicket(prev => ({ ...prev, [ticketId]: (data as TicketMessage[]) ?? [] }))
+    setLoadingMessages(false)
+  }, [])
+
+  function toggleConversation(ticketId: string) {
+    if (expandedTicketId === ticketId) {
+      setExpandedTicketId(null)
+      return
+    }
+    setExpandedTicketId(ticketId)
+    setReplyText('')
+    fetchMessages(ticketId)
+  }
+
+  async function handleReply(ticketId: string) {
+    if (!replyText.trim() || !user || sendingReply) return
+    setSendingReply(true)
+    const { error: replyError } = await supabase
+      .from('ticket_messages')
+      .insert({ ticket_id: ticketId, sender_id: user.id, message: replyText.trim() })
+
+    if (!replyError) {
+      setReplyText('')
+      await fetchMessages(ticketId)
+    }
+    setSendingReply(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -237,32 +279,137 @@ export default function BuyerSupport() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {tickets.map(ticket => {
             const s = statusColors[ticket.status]
+            const isExpanded = expandedTicketId === ticket.id
+            const threadMessages = messagesByTicket[ticket.id] ?? []
+
             return (
               <div key={ticket.id} style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',
                 borderRadius: '10px',
                 padding: '1rem 1.25rem',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '10px',
               }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-text-primary)', marginBottom: '3px' }}>
-                    {ticket.subject}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-text-primary)', marginBottom: '3px' }}>
+                      {ticket.subject}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
+                      {ticket.category.replace('_', ' ')} · {new Date(ticket.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', textTransform: 'capitalize' }}>
-                    {ticket.category.replace('_', ' ')} · {new Date(ticket.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{
+                      fontSize: '0.78rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px',
+                      color: s.color, background: s.bg,
+                    }}>
+                      {s.label}
+                    </span>
+                    <button
+                      onClick={() => toggleConversation(ticket.id)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--color-border)',
+                        background: 'transparent',
+                        color: 'var(--color-primary)',
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {isExpanded ? 'Hide conversation ▲' : '💬 View conversation ▾'}
+                    </button>
                   </div>
                 </div>
-                <span style={{
-                  fontSize: '0.78rem', fontWeight: 700, padding: '4px 10px', borderRadius: '999px',
-                  color: s.color, background: s.bg,
-                }}>
-                  {s.label}
-                </span>
+
+                {isExpanded && (
+                  <div style={{
+                    marginTop: '1rem',
+                    paddingTop: '1rem',
+                    borderTop: '1px solid var(--color-border)',
+                  }}>
+                    {loadingMessages ? (
+                      <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                        Loading conversation…
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '1rem' }}>
+                        {threadMessages.length === 0 ? (
+                          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>No messages yet.</p>
+                        ) : (
+                          threadMessages.map(msg => {
+                            const isMine = msg.sender_id === user?.id
+                            return (
+                              <div
+                                key={msg.id}
+                                style={{
+                                  alignSelf: isMine ? 'flex-end' : 'flex-start',
+                                  maxWidth: '85%',
+                                  backgroundColor: isMine ? 'var(--color-primary-light)' : 'var(--color-background)',
+                                  border: '1px solid var(--color-border)',
+                                  borderRadius: '10px',
+                                  padding: '0.6rem 0.9rem',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.25rem' }}>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: isMine ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
+                                    {isMine ? 'You' : 'Support Team'}
+                                  </span>
+                                  <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                                    {new Date(msg.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.875rem', color: 'var(--color-text-primary)', lineHeight: 1.5, whiteSpace: 'pre-line' }}>
+                                  {msg.message}
+                                </div>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    )}
+
+                    {ticket.status !== 'closed' ? (
+                      <div style={{ display: 'flex', gap: '0.6rem' }}>
+                        <textarea
+                          value={replyText}
+                          onChange={e => setReplyText(e.target.value)}
+                          placeholder="Write a reply…"
+                          rows={2}
+                          style={{ ...inputStyle, resize: 'vertical', flex: 1 }}
+                        />
+                        <button
+                          onClick={() => handleReply(ticket.id)}
+                          disabled={sendingReply || !replyText.trim()}
+                          style={{
+                            padding: '0 18px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: 'var(--color-primary)',
+                            color: '#fff',
+                            fontWeight: 700,
+                            fontSize: '0.85rem',
+                            cursor: sendingReply || !replyText.trim() ? 'default' : 'pointer',
+                            opacity: sendingReply || !replyText.trim() ? 0.6 : 1,
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                        This ticket is closed. Open a new ticket if you need further help.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}

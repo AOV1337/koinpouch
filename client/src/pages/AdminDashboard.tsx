@@ -6,19 +6,9 @@ import {
 } from 'recharts'
 import DashboardLayout from '../layouts/DashboardLayout'
 import KycReviewPanel from '../components/KycReviewPanel'
+import { adminSidebarItems as sidebarItems } from '../lib/adminSidebar'
 import AdminTicketsPanel from '../components/AdminTicketsPanel'
 import { supabase } from '../lib/supabase'
-
-const sidebarItems = [
-  { label: 'Overview', path: '/dashboard/admin', icon: '📊' },
-  { label: 'KYC Review', path: '/dashboard/admin/kyc-requests', icon: '🪪' },
-  { label: 'Support Tickets', path: '/dashboard/admin/tickets', icon: '🎧' },
-  { label: 'User Manager', path: '/dashboard/admin/users', icon: '👥' },
-  { label: 'Hall of Fame', path: '/dashboard/admin/hall-of-fame', icon: '🏆' },
-  { label: 'Guides Manager', path: '/dashboard/admin/guides', icon: '📖' },
-  { label: 'Listings', path: '/dashboard/admin/listings', icon: '🏷️' },
-  { label: 'Analytics', path: '/dashboard/admin/analytics', icon: '📈' },
-]
 
 const quickActions = [
   { label: 'Add Hall of Fame Item', path: '/dashboard/admin/hall-of-fame', icon: '🏆' },
@@ -81,11 +71,12 @@ function buildSalesTimeline(orders: { created_at: string; amount: number }[]): S
 
 // Group orders by listing category
 function buildCategoryBreakdown(
-  orders: { amount: number; listing: { category: string }[] | null }[]
+  orders: { amount: number; listings: { category: string }[] | { category: string } | null }[]
 ): CategoryDataPoint[] {
   const map: Record<string, { orders: number; revenue: number }> = {}
   orders.forEach(o => {
-    const cat = o.listing?.[0]?.category ?? 'unknown'
+    const listing = Array.isArray(o.listings) ? o.listings[0] : o.listings
+    const cat = listing?.category ?? 'unknown'
     if (!map[cat]) map[cat] = { orders: 0, revenue: 0 }
     map[cat].orders += 1
     map[cat].revenue += o.amount
@@ -128,7 +119,7 @@ export default function AdminDashboard() {
       supabase.from('orders').select('amount, created_at, listings(category)'),
     ])
 
-    const orders = (ordersData ?? []) as unknown as { amount: number; created_at: string; listing: { category: string }[] | null }[]
+    const orders = (ordersData ?? []) as unknown as { amount: number; created_at: string; listings: { category: string }[] | { category: string } | null }[]
     const revenue = orders.reduce((sum, o) => sum + (o.amount ?? 0), 0)
 
     setStats({

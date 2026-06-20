@@ -2,17 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import DashboardLayout from '../layouts/DashboardLayout'
 import { supabase } from '../lib/supabase'
 import { getKycDocumentSignedUrl } from '../lib/storage'
-
-const sidebarItems = [
-  { label: 'Overview', path: '/dashboard/admin', icon: '📊' },
-  { label: 'KYC Review', path: '/dashboard/admin/kyc-requests', icon: '🪪' },
-  { label: 'Support Tickets', path: '/dashboard/admin/tickets', icon: '🎧' },
-  { label: 'User Manager', path: '/dashboard/admin/users', icon: '👥' },
-  { label: 'Item Database', path: '/dashboard/admin/database', icon: '🗄️' },
-  { label: 'Guides Manager', path: '/dashboard/admin/guides', icon: '📖' },
-  { label: 'Listings', path: '/dashboard/admin/listings', icon: '🏷️' },
-  { label: 'Analytics', path: '/dashboard/admin/analytics', icon: '📈' },
-]
+import { adminSidebarItems as sidebarItems } from '../lib/adminSidebar'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

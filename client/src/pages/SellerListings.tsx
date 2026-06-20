@@ -367,21 +367,39 @@ export default function SellerListings() {
                 >
                   View
                 </Link>
-                <button
-                  onClick={() => setConfirmDeleteId(listing.id)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid #fecaca',
-                    backgroundColor: 'transparent',
-                    color: '#dc2626',
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Delete
-                </button>
+                {listing.status !== 'sold' && (
+                  <Link
+                    to={`/dashboard/seller/listings/${listing.id}/edit`}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-primary)',
+                      color: 'var(--color-primary)',
+                      textDecoration: 'none',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Edit
+                  </Link>
+                )}
+                {listing.status !== 'sold' && (
+                  <button
+                    onClick={() => setConfirmDeleteId(listing.id)}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #fecaca',
+                      backgroundColor: 'transparent',
+                      color: '#dc2626',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           </div>

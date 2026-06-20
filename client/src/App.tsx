@@ -14,6 +14,7 @@ import BuyerOrders from './pages/BuyerOrders'
 import BuyerBookmarks from './pages/BuyerBookmarks'
 import BuyerSupport from './pages/BuyerSupport'
 import SellerDashboard from './pages/SellerDashboard'
+import SellerReputation from './pages/SellerReputation'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminTickets from './pages/AdminTickets'
 import AdminKycRequests from './pages/AdminKycRequests'
@@ -23,9 +24,12 @@ import HallOfFame from './pages/HallOfFame'
 import HallOfFameDetail from './pages/HallOfFameDetail'
 import AdminHallOfFameManager from './pages/AdminHallOfFameManager'
 import HallOfFameEditor from './pages/HallOfFameEditor'
+import AdminUserManager from './pages/AdminUserManager'
+import AdminListingsManager from './pages/AdminListingsManager'
 import NotFound from './pages/NotFound'
 import CreateListing from './pages/CreateListing'
 import SellerListings from './pages/SellerListings'
+import EditListing from './pages/EditListing'
 import KycSubmission from './pages/KycSubmission'
 import { useProfile } from './hooks/useProfile'
 
@@ -91,11 +95,17 @@ export default function App() {
         <Route path="/dashboard/seller/listings" element={
           <ProtectedRoute requiredRole="seller"><SellerListings /></ProtectedRoute>
         } />
+        <Route path="/dashboard/seller/listings/:id/edit" element={
+          <ProtectedRoute requiredRole="seller"><EditListing /></ProtectedRoute>
+        } />
         <Route path="/dashboard/seller/create" element={
           <ProtectedRoute requiredRole="seller"><CreateListing /></ProtectedRoute>
         } />
         <Route path="/dashboard/seller/kyc" element={
           <ProtectedRoute requiredRole="seller"><KycSubmission /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/seller/reputation" element={
+          <ProtectedRoute requiredRole="seller"><SellerReputation /></ProtectedRoute>
         } />
 
         {/* Admin routes */}
@@ -125,6 +135,12 @@ export default function App() {
         } />
         <Route path="/dashboard/admin/hall-of-fame/:id/edit" element={
           <ProtectedRoute requiredRole="admin"><HallOfFameEditor /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/users" element={
+          <ProtectedRoute requiredRole="admin"><AdminUserManager /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/listings" element={
+          <ProtectedRoute requiredRole="admin"><AdminListingsManager /></ProtectedRoute>
         } />
 
         {/* Fallback */}

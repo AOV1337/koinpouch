@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import Pagination from '../components/Pagination'
+
+const PAGE_SIZE = 10
 
 interface Guide {
   id: string
@@ -41,6 +44,7 @@ export default function Guides() {
   const [selectedType, setSelectedType] = useState('All')
   const [selectedTopic, setSelectedTopic] = useState('All')
   const [sort, setSort] = useState('newest')
+  const [page, setPage] = useState(1)
 
   const fetchGuides = useCallback(async () => {
     setLoading(true)
@@ -82,6 +86,23 @@ export default function Guides() {
     if (sort === 'az') result.sort((a, b) => a.title.localeCompare(b.title))
     return result
   }, [guides, search, selectedType, selectedTopic, sort])
+
+  // Reset to page 1 whenever the filtered set would change shape
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1)
+  }, [search, selectedType, selectedTopic, sort])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page]
+  )
+
+  function handlePageChange(p: number) {
+    setPage(p)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const filterLabelStyle = {
     fontSize: '0.8rem',
@@ -237,7 +258,10 @@ export default function Guides() {
           </div>
 
           <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem', fontWeight: 500 }}>
-            {loading ? 'Loading…' : `${filtered.length} guide${filtered.length !== 1 ? 's' : ''} found`}
+            {loading
+              ? 'Loading…'
+              : `${filtered.length} guide${filtered.length !== 1 ? 's' : ''} found${totalPages > 1 ? ` · page ${page} of ${totalPages}` : ''}`
+            }
           </div>
 
           {loading ? (
@@ -246,109 +270,113 @@ export default function Guides() {
               Loading guides...
             </div>
           ) : filtered.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {filtered.map(guide => (
-                <Link key={guide.id} to={`/guides/${guide.slug}`} style={{ textDecoration: 'none' }}>
-                  <div
-                    style={{
-                      backgroundColor: 'var(--color-surface)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: '14px',
-                      padding: '1.5rem',
-                      display: 'flex',
-                      gap: '1.25rem',
-                      alignItems: 'flex-start',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => {
-                      const el = e.currentTarget as HTMLDivElement
-                      el.style.borderColor = 'var(--color-primary)'
-                      el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.06)'
-                    }}
-                    onMouseLeave={e => {
-                      const el = e.currentTarget as HTMLDivElement
-                      el.style.borderColor = 'var(--color-border)'
-                      el.style.boxShadow = 'none'
-                    }}
-                  >
-                    <div style={{
-                      width: '72px',
-                      height: '72px',
-                      borderRadius: '12px',
-                      backgroundColor: 'var(--color-primary-light)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '2rem',
-                      flexShrink: 0,
-                    }}>
-                      {guide.thumbnail_url ?? '📚'}
-                    </div>
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {paginated.map(guide => (
+                  <Link key={guide.id} to={`/guides/${guide.slug}`} style={{ textDecoration: 'none' }}>
+                    <div
+                      style={{
+                        backgroundColor: 'var(--color-surface)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '14px',
+                        padding: '1.5rem',
+                        display: 'flex',
+                        gap: '1.25rem',
+                        alignItems: 'flex-start',
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={e => {
+                        const el = e.currentTarget as HTMLDivElement
+                        el.style.borderColor = 'var(--color-primary)'
+                        el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.06)'
+                      }}
+                      onMouseLeave={e => {
+                        const el = e.currentTarget as HTMLDivElement
+                        el.style.borderColor = 'var(--color-border)'
+                        el.style.boxShadow = 'none'
+                      }}
+                    >
+                      <div style={{
+                        width: '72px',
+                        height: '72px',
+                        borderRadius: '12px',
+                        backgroundColor: 'var(--color-primary-light)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '2rem',
+                        flexShrink: 0,
+                      }}>
+                        {guide.thumbnail_url ?? '📚'}
+                      </div>
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem', alignItems: 'center' }}>
-                        {guide.topic && (
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem', alignItems: 'center' }}>
+                          {guide.topic && (
+                            <span style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: '#fff',
+                              backgroundColor: topicColors[guide.topic] ?? 'var(--color-primary)',
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                            }}>
+                              {guide.topic}
+                            </span>
+                          )}
                           <span style={{
                             fontSize: '0.72rem',
-                            fontWeight: 700,
-                            color: '#fff',
-                            backgroundColor: topicColors[guide.topic] ?? 'var(--color-primary)',
+                            fontWeight: 600,
+                            color: 'var(--color-primary)',
+                            backgroundColor: 'var(--color-primary-light)',
                             padding: '2px 8px',
                             borderRadius: '999px',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
+                            textTransform: 'capitalize',
                           }}>
-                            {guide.topic}
+                            {guide.category}
                           </span>
-                        )}
-                        <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 600,
-                          color: 'var(--color-primary)',
-                          backgroundColor: 'var(--color-primary-light)',
-                          padding: '2px 8px',
-                          borderRadius: '999px',
-                          textTransform: 'capitalize',
+                        </div>
+
+                        <h2 style={{
+                          fontSize: '1rem',
+                          fontWeight: 700,
+                          color: 'var(--color-text-primary)',
+                          marginBottom: '0.4rem',
+                          lineHeight: 1.3,
                         }}>
-                          {guide.category}
-                        </span>
-                      </div>
+                          {guide.title}
+                        </h2>
 
-                      <h2 style={{
-                        fontSize: '1rem',
-                        fontWeight: 700,
-                        color: 'var(--color-text-primary)',
-                        marginBottom: '0.4rem',
-                        lineHeight: 1.3,
-                      }}>
-                        {guide.title}
-                      </h2>
+                        <p style={{
+                          fontSize: '0.875rem',
+                          color: 'var(--color-text-secondary)',
+                          lineHeight: 1.6,
+                          marginBottom: '0.75rem',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        } as React.CSSProperties}>
+                          {guide.excerpt}
+                        </p>
 
-                      <p style={{
-                        fontSize: '0.875rem',
-                        color: 'var(--color-text-secondary)',
-                        lineHeight: 1.6,
-                        marginBottom: '0.75rem',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                      } as React.CSSProperties}>
-                        {guide.excerpt}
-                      </p>
-
-                      <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                        <span>✍️ {guide.author_name}</span>
-                        {guide.published_at && (
-                          <span>📅 {new Date(guide.published_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                        )}
-                        <span>⏱️ {guide.read_time ?? '—'} min read</span>
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                          <span>✍️ {guide.author_name}</span>
+                          {guide.published_at && (
+                            <span>📅 {new Date(guide.published_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                          )}
+                          <span>⏱️ {guide.read_time ?? '—'} min read</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                  </Link>
+                ))}
+              </div>
+
+              <Pagination currentPage={page} totalPages={totalPages} onPageChange={handlePageChange} />
+            </>
           ) : (
             <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--color-text-muted)' }}>
               <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📚</div>

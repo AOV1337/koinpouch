@@ -1,16 +1,72 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useTheme } from '../hooks/useTheme'
 import { useProfile } from '../hooks/useProfile'
+import { useAvatarUrl } from '../hooks/useAvatarUrl'
+import { supabase } from '../lib/supabase'
 import { OPEN_CHAT_WIDGET_EVENT } from './ChatWidget'
 import NotificationBell from './NotificationBell'
+import Avatar from './Avatar'
+
+const AVATAR_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const AVATAR_MAX_SIZE_MB = 5
 
 export default function Navbar() {
   const { user } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const { profile, loading: profileLoading } = useProfile()
   const [logoShaking, setLogoShaking] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useAvatarUrl(user?.id)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleAvatarSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !user) return
+
+    if (!AVATAR_ACCEPTED_TYPES.includes(file.type)) {
+      alert('Please choose a JPEG, PNG, or WebP image.')
+      return
+    }
+    if (file.size > AVATAR_MAX_SIZE_MB * 1024 * 1024) {
+      alert(`Image must be under ${AVATAR_MAX_SIZE_MB}MB.`)
+      return
+    }
+
+    setUploadingAvatar(true)
+
+    const ext = file.name.split('.').pop() ?? 'jpg'
+    const path = `avatars/${user.id}-${Date.now()}.${ext}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('listing-images')
+      .upload(path, file, { upsert: true })
+
+    if (uploadError) {
+      setUploadingAvatar(false)
+      alert('Failed to upload photo. Please try again.')
+      return
+    }
+
+    const { data: urlData } = supabase.storage.from('listing-images').getPublicUrl(path)
+    const publicUrl = urlData.publicUrl
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: publicUrl })
+      .eq('id', user.id)
+
+    setUploadingAvatar(false)
+
+    if (updateError) {
+      alert('Photo uploaded, but saving it to your profile failed. Please try again.')
+      return
+    }
+
+    setAvatarUrl(publicUrl)
+  }
 
   function handleOpenAssistant() {
     window.dispatchEvent(new Event(OPEN_CHAT_WIDGET_EVENT))
@@ -56,10 +112,6 @@ export default function Navbar() {
     }}>
       {/* Logo sheen + shake keyframes — scoped via plain <style>, this codebase has no CSS-in-JS / utility classes */}
       <style>{`
-        @keyframes kp-sheen {
-          0% { background-position: 200% center; }
-          100% { background-position: -100% center; }
-        }
         @keyframes kp-shake {
           0%, 100% { transform: translateX(0) rotate(0deg); }
           20% { transform: translateX(-4px) rotate(-3deg); }
@@ -71,18 +123,8 @@ export default function Navbar() {
           display: inline-block;
           color: var(--color-primary);
         }
-        .kp-logo:hover {
-          background-image: linear-gradient(100deg, var(--color-primary) 30%, #ffe6cc 50%, var(--color-primary) 70%);
-          background-size: 220% auto;
-          background-position: 200% center;
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-          animation: kp-sheen 1.1s ease-in-out;
-        }
         .kp-logo-shake { animation: kp-shake 0.5s ease; }
         @media (prefers-reduced-motion: reduce) {
-          .kp-logo:hover { animation: none; }
           .kp-logo-shake { animation: none; }
         }
       `}</style>
@@ -196,21 +238,42 @@ export default function Navbar() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              {/* Avatar + name — avatar is a placeholder circle until profile pictures land */}
+              {/* Avatar + name — click the avatar to upload/replace a profile picture */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-primary-light)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1rem',
-                  flexShrink: 0,
-                }}>
-                  👤
+                <div
+                  onClick={() => !uploadingAvatar && avatarInputRef.current?.click()}
+                  title="Change profile picture"
+                  style={{
+                    cursor: uploadingAvatar ? 'default' : 'pointer',
+                    opacity: uploadingAvatar ? 0.5 : 1,
+                    position: 'relative',
+                  }}
+                >
+                  <Avatar url={avatarUrl} name={profile?.full_name ?? user.email} size={32} />
+                  <span style={{
+                    position: 'absolute',
+                    bottom: -2,
+                    right: -2,
+                    fontSize: '0.6rem',
+                    backgroundColor: 'var(--color-surface)',
+                    borderRadius: '50%',
+                    width: '14px',
+                    height: '14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid var(--color-border)',
+                  }}>
+                    📷
+                  </span>
                 </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={handleAvatarSelect}
+                />
                 <span style={{
                   fontSize: '0.9rem',
                   fontWeight: 600,

@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import ListingCard from '../components/ListingCard'
 import type { Listing } from '../components/ListingCard'
 import { CATEGORY_META, CONDITION_META, type ListingCategory, type ListingCondition } from '../lib/listingMeta'
+import Pagination from '../components/Pagination'
+
+const PAGE_SIZE = 32
 
 const categories = ['All', 'cards', 'coins', 'stamps', 'figurines']
 const conditions = ['All', 'mint', 'near_mint', 'good', 'fair', 'poor']
@@ -29,6 +32,7 @@ export default function Browse() {
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sort, setSort] = useState('newest')
+  const [page, setPage] = useState(1)
 
   // Keeps the filter in sync with the URL — covers both the initial load
   // (e.g. arriving from the home page category buttons) and any later
@@ -101,6 +105,23 @@ export default function Browse() {
 
     return result
   }, [listings, search, selectedCategory, selectedCondition, minPrice, maxPrice, sort])
+
+  // Reset to page 1 whenever the filtered set would change shape
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1)
+  }, [search, selectedCategory, selectedCondition, minPrice, maxPrice, sort])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = useMemo(
+    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filtered, page]
+  )
+
+  function handlePageChange(p: number) {
+    setPage(p)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const filterLabelStyle = {
     fontSize: '0.8rem',
@@ -336,19 +357,22 @@ export default function Browse() {
         {!loading && !error && (
           <>
             <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem', fontWeight: 500 }}>
-              {filtered.length} listing{filtered.length !== 1 ? 's' : ''} found
+              {filtered.length} listing{filtered.length !== 1 ? 's' : ''} found{totalPages > 1 ? ` · page ${page} of ${totalPages}` : ''}
             </div>
 
             {filtered.length > 0 ? (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                gap: '1.25rem',
-              }}>
-                {filtered.map(listing => (
-                  <ListingCard key={listing.id} listing={listing} />
-                ))}
-              </div>
+              <>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                  gap: '1.25rem',
+                }}>
+                  {paginated.map(listing => (
+                    <ListingCard key={listing.id} listing={listing} />
+                  ))}
+                </div>
+                <Pagination currentPage={page} totalPages={totalPages} onPageChange={handlePageChange} />
+              </>
             ) : (
               <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--color-text-muted)' }}>
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>

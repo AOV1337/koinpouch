@@ -3,14 +3,7 @@ import { Link } from 'react-router-dom'
 import DashboardLayout from '../layouts/DashboardLayout'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-
-const sidebarItems = [
-  { label: 'Overview', path: '/dashboard/buyer', icon: '📊' },
-  { label: 'My Orders', path: '/dashboard/buyer/orders', icon: '📦' },
-  { label: 'Bookmarks', path: '/dashboard/buyer/bookmarks', icon: '🔖' },
-  { label: 'Support', path: '/dashboard/buyer/support', icon: '🎧' },
-  { label: 'Settings', path: '/dashboard/buyer/settings', icon: '⚙️' },
-]
+import { buyerSidebarItems as sidebarItems } from '../lib/buyerSidebar'
 
 interface Bookmark {
   id: string
@@ -44,14 +37,11 @@ export default function BuyerBookmarks() {
   const fetchBookmarks = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('bookmarks')
       .select('id, created_at, listing_id, listings(id, title, price, currency, category, condition, status, images)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-
-    console.log('Bookmarks raw:', JSON.stringify(data?.[0], null, 2))
-    console.log('Bookmarks error:', error)
 
     setBookmarks((data as unknown as Bookmark[]) ?? [])
     setLoading(false)

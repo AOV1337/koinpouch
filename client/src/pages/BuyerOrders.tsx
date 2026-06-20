@@ -4,14 +4,7 @@ import DashboardLayout from '../layouts/DashboardLayout'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import ReviewForm from '../components/ReviewForm'
-
-const sidebarItems = [
-  { label: 'Overview', path: '/dashboard/buyer', icon: '📊' },
-  { label: 'My Orders', path: '/dashboard/buyer/orders', icon: '📦' },
-  { label: 'Bookmarks', path: '/dashboard/buyer/bookmarks', icon: '🔖' },
-  { label: 'Support', path: '/dashboard/buyer/support', icon: '🎧' },
-  { label: 'Settings', path: '/dashboard/buyer/settings', icon: '⚙️' },
-]
+import { buyerSidebarItems as sidebarItems } from '../lib/buyerSidebar'
 
 interface Order {
   id: string

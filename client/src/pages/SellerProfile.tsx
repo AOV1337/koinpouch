@@ -2,14 +2,13 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import SellerBadge from '../components/SellerBadge'
+import Avatar from '../components/Avatar'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SellerProfileRow {
   bio: string | null
   location: string | null
-  reputation_score: number | null
-  total_sales: number | null
   joined_as_seller_at: string | null
   kyc_status: 'pending' | 'approved' | 'rejected'
 }
@@ -152,17 +151,17 @@ function KycBadge({ status }: { status: 'pending' | 'approved' | 'rejected' }) {
   )
 }
 
+function formatMemberSince(dateStr: string | null) {
+  if (!dateStr) return 'Unknown'
+  return new Date(dateStr).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' })
+}
+
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   })
-}
-
-function formatMemberSince(dateStr: string | null) {
-  if (!dateStr) return 'Unknown'
-  return new Date(dateStr).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' })
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -173,6 +172,7 @@ export default function SellerProfile() {
   const [seller, setSeller] = useState<SellerInfo | null>(null)
   const [listings, setListings] = useState<Listing[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
+  const [totalSales, setTotalSales] = useState(0)
   const [activeTab, setActiveTab] = useState<'listings' | 'reviews'>('listings')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -194,8 +194,6 @@ export default function SellerProfile() {
           seller_profiles (
             bio,
             location,
-            reputation_score,
-            total_sales,
             joined_as_seller_at,
             kyc_status
           )
@@ -206,32 +204,47 @@ export default function SellerProfile() {
       if (sellerError) throw sellerError
       setSeller(sellerData as unknown as SellerInfo)
 
-      const { data: listingsData, error: listingsError } = await supabase
-        .from('listings')
-        .select('id, title, price, currency, category, condition, images, created_at')
-        .eq('seller_id', id)
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
+      const [
+        { data: listingsData, error: listingsError },
+        { data: reviewsData, error: reviewsError },
+        { count: salesCount },
+      ] = await Promise.all([
+        supabase
+          .from('listings')
+          .select('id, title, price, currency, category, condition, images, created_at')
+          .eq('seller_id', id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('reviews')
+          .select(`
+            id,
+            rating,
+            comment,
+            created_at,
+            buyer:profiles!reviews_buyer_id_fkey (
+              full_name
+            )
+          `)
+          .eq('seller_id', id)
+          .order('created_at', { ascending: false }),
+        // Live count rather than trusting seller_profiles.total_sales, which
+        // goes stale (same root cause as the dashboard reputation bugs from
+        // earlier — ReviewForm.tsx's recompute-on-submit never reliably
+        // wrote it back).
+        supabase
+          .from('orders')
+          .select('*', { count: 'exact', head: true })
+          .eq('seller_id', id),
+      ])
 
       if (listingsError) throw listingsError
       setListings(listingsData ?? [])
 
-      const { data: reviewsData, error: reviewsError } = await supabase
-        .from('reviews')
-        .select(`
-          id,
-          rating,
-          comment,
-          created_at,
-          buyer:profiles!reviews_buyer_id_fkey (
-            full_name
-          )
-        `)
-        .eq('seller_id', id)
-        .order('created_at', { ascending: false })
-
       if (reviewsError) throw reviewsError
       setReviews((reviewsData as unknown as Review[]) ?? [])
+
+      setTotalSales(salesCount ?? 0)
     } catch (err: unknown) {
       console.error(err)
       setError('Could not load seller profile. Please try again.')
@@ -272,6 +285,12 @@ export default function SellerProfile() {
   const sp = Array.isArray(seller.seller_profiles) ? (seller.seller_profiles[0] ?? null) : null
   const liveAverage = computeAverage(reviews)
 
+  const statStrip = [
+    { label: 'Active Listings', value: listings.length },
+    { label: 'Total Sales', value: totalSales },
+    { label: 'Reviews', value: reviews.length },
+  ]
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -294,75 +313,54 @@ export default function SellerProfile() {
           borderRadius: '16px',
           padding: '32px',
           marginBottom: '32px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '32px',
-          alignItems: 'flex-start',
         }}
       >
-        {/* Avatar */}
-        <div
-          style={{
-            width: '96px',
-            height: '96px',
-            borderRadius: '50%',
-            background: seller.avatar_url ? undefined : '#f97316',
-            backgroundImage: seller.avatar_url ? `url(${seller.avatar_url})` : undefined,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '2.2rem',
-            color: '#fff',
-            fontWeight: 700,
-          }}
-        >
-          {!seller.avatar_url && (seller.full_name?.[0]?.toUpperCase() ?? '?')}
-        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start', marginBottom: sp?.bio ? '20px' : '24px' }}>
+          <Avatar url={seller.avatar_url} name={seller.full_name} size={96} />
 
-        {/* Info */}
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-              {seller.full_name ?? 'Anonymous Seller'}
-            </h1>
-            {sp?.kyc_status && <KycBadge status={sp.kyc_status} />}
-            <SellerBadge averageRating={liveAverage} reviewCount={reviews.length} />
-          </div>
+          <div style={{ flex: 1, minWidth: '240px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+              <h1 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                {seller.full_name ?? 'Anonymous Seller'}
+              </h1>
+              {sp?.kyc_status && <KycBadge status={sp.kyc_status} />}
+              <SellerBadge averageRating={liveAverage} reviewCount={reviews.length} />
+            </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <AverageRating reviews={reviews} />
-          </div>
+            <div style={{ marginBottom: '10px' }}>
+              <AverageRating reviews={reviews} />
+            </div>
 
-          {sp?.bio && (
-            <p style={{ color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '12px', maxWidth: '600px' }}>
-              {sp.bio}
-            </p>
-          )}
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-            {sp?.location && (
-              <span>📍 {sp.location}</span>
-            )}
-            <span>📦 {sp?.total_sales ?? 0} sales</span>
-            <span>🗓 Member since {formatMemberSince(sp?.joined_as_seller_at ?? seller.created_at)}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              {sp?.location && <span>📍 {sp.location}</span>}
+              <span>🗓 Member since {formatMemberSince(sp?.joined_as_seller_at ?? seller.created_at)}</span>
+            </div>
           </div>
         </div>
 
-        {/* Stats box */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            minWidth: '140px',
-          }}
-        >
-          <StatBox label="Active Listings" value={listings.length.toString()} />
-          <StatBox label="Total Sales" value={(sp?.total_sales ?? 0).toString()} />
-          <StatBox label="Reviews" value={reviews.length.toString()} />
+        {sp?.bio && (
+          <p style={{ color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '24px', maxWidth: '760px' }}>
+            {sp.bio}
+          </p>
+        )}
+
+        {/* Stats strip — spans the full card width instead of a narrow side column */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+          {statStrip.map(stat => (
+            <div
+              key={stat.label}
+              style={{
+                background: 'var(--color-background)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '10px',
+                padding: '16px',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>{stat.value}</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: '2px', fontWeight: 500 }}>{stat.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -487,23 +485,6 @@ export default function SellerProfile() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StatBox({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        background: 'var(--color-background)',
-        border: '1px solid var(--color-border)',
-        borderRadius: '10px',
-        padding: '12px 16px',
-        textAlign: 'center',
-      }}
-    >
-      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>{label}</div>
-    </div>
-  )
-}
 
 function ListingCard({ listing }: { listing: Listing }) {
   const image = Array.isArray(listing.images) && listing.images.length > 0 ? listing.images[0] : null

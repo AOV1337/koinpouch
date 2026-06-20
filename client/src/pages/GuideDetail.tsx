@@ -27,10 +27,17 @@ const topicColors: Record<string, string> = {
 }
 
 interface ContentBlock {
-  type: 'heading' | 'paragraph'
+  type: 'heading' | 'paragraph' | 'image'
   text: string
   html: string
+  imageAlt?: string
+  imageUrl?: string
 }
+
+// A block that is *only* a markdown image — ![alt](url) — on its own line,
+// separated from surrounding text by the usual blank-line block split, is
+// rendered as a real <img> rather than a paragraph.
+const IMAGE_BLOCK_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/
 
 function parseMarkdown(md: string): ContentBlock[] {
   const blocks = md.split(/\n\s*\n/).filter(Boolean)
@@ -39,6 +46,10 @@ function parseMarkdown(md: string): ContentBlock[] {
     if (trimmed.startsWith('## ')) {
       const text = trimmed.slice(3)
       return { type: 'heading', text, html: text }
+    }
+    const imageMatch = trimmed.match(IMAGE_BLOCK_RE)
+    if (imageMatch) {
+      return { type: 'image', text: trimmed, html: '', imageAlt: imageMatch[1], imageUrl: imageMatch[2] }
     }
     const html = trimmed
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -250,6 +261,20 @@ export default function GuideDetail() {
                 >
                   {block.text}
                 </h2>
+              ) : block.type === 'image' ? (
+                <img
+                  key={idx}
+                  src={block.imageUrl}
+                  alt={block.imageAlt || ''}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    maxHeight: '440px',
+                    objectFit: 'cover',
+                    borderRadius: '12px',
+                    margin: '1.25rem 0',
+                  }}
+                />
               ) : (
                 <p
                   key={idx}

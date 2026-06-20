@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import DashboardLayout from '../layouts/DashboardLayout'
 import { supabase } from '../lib/supabase'
@@ -48,6 +48,12 @@ const topicColors: Record<string, string> = {
 }
 
 const EMOJI_OPTIONS = ['📚', '🃏', '🗿', '🪙', '✉️', '🔍', '💡', '📸', '🛡️', '⭐']
+
+// A block that is *only* a markdown image — ![alt](url) — on its own line.
+const IMAGE_BLOCK_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/
+
+const MAX_IMAGE_SIZE_MB = 5
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 function slugify(title: string): string {
   return title
@@ -99,6 +105,11 @@ export default function GuideEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState(false)
+
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   // ── Load existing guide when editing ──────────────────────────────────────
 
@@ -154,6 +165,54 @@ export default function GuideEditor() {
 
   const isValid = title.trim() && slug.trim() && excerpt.trim() && content.trim() && topic
 
+  // ── Inline images ──────────────────────────────────────────────────────────
+  // Reuses the existing public `listing-images` storage bucket (already
+  // public-read / authenticated-write — same bucket Hall of Fame hero images
+  // use under their own path prefix) rather than provisioning anything new.
+
+  async function handleImageFile(file: File | null) {
+    if (!file) return
+    setImageError(null)
+
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setImageError('Only JPEG, PNG, and WebP images are supported.')
+      return
+    }
+    if (file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024) {
+      setImageError(`Image must be under ${MAX_IMAGE_SIZE_MB}MB.`)
+      return
+    }
+
+    setUploadingImage(true)
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `guide-images/${slug || 'draft'}-${Date.now()}.${ext}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('listing-images')
+        .upload(path, file)
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage.from('listing-images').getPublicUrl(path)
+      const altText = file.name.replace(/\.[^/.]+$/, '')
+      const markdown = `\n\n![${altText}](${data.publicUrl})\n\n`
+
+      const textarea = textareaRef.current
+      if (textarea && !previewMode) {
+        const start = textarea.selectionStart ?? content.length
+        const end = textarea.selectionEnd ?? content.length
+        setContent(prev => prev.slice(0, start) + markdown + prev.slice(end))
+      } else {
+        setContent(prev => prev + markdown)
+      }
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'Failed to upload image.')
+    } finally {
+      setUploadingImage(false)
+      if (imageInputRef.current) imageInputRef.current.value = ''
+    }
+  }
+
   // ── Save ───────────────────────────────────────────────────────────────────
 
   async function handleSave(publishOverride?: boolean) {
@@ -204,7 +263,8 @@ export default function GuideEditor() {
   }
 
   // ── Simple markdown preview renderer ──────────────────────────────────────
-  // Supports: ## headings, blank-line paragraphs, **bold**, *italic*
+  // Supports: ## headings, blank-line paragraphs, **bold**, *italic*,
+  // and a standalone ![alt](url) line rendered as an actual image.
   function renderMarkdownPreview(md: string) {
     const blocks = md.split(/\n\s*\n/).filter(Boolean)
     return blocks.map((block, i) => {
@@ -214,6 +274,17 @@ export default function GuideEditor() {
           <h2 key={i} style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-text-primary)', margin: '1.25rem 0 0.75rem' }}>
             {trimmed.slice(3)}
           </h2>
+        )
+      }
+      const imageMatch = trimmed.match(IMAGE_BLOCK_RE)
+      if (imageMatch) {
+        return (
+          <img
+            key={i}
+            src={imageMatch[2]}
+            alt={imageMatch[1]}
+            style={{ display: 'block', width: '100%', maxHeight: '320px', objectFit: 'cover', borderRadius: '10px', margin: '1rem 0' }}
+          />
         )
       }
       // Bold/italic inline rendering
@@ -419,29 +490,68 @@ export default function GuideEditor() {
 
         {/* Content */}
         <div style={sectionStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
               Content
             </h2>
-            <button
-              onClick={() => setPreviewMode(p => !p)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '8px',
-                border: '1px solid var(--color-border)',
-                backgroundColor: previewMode ? 'var(--color-primary)' : 'transparent',
-                color: previewMode ? '#fff' : 'var(--color-text-secondary)',
-                fontWeight: 600,
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-              }}
-            >
-              {previewMode ? '✏️ Edit' : '👁️ Preview'}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                style={{ display: 'none' }}
+                onChange={e => handleImageFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImage}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--color-text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  cursor: uploadingImage ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {uploadingImage ? 'Uploading…' : '🖼️ Insert Image'}
+              </button>
+              <button
+                onClick={() => setPreviewMode(p => !p)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: previewMode ? 'var(--color-primary)' : 'transparent',
+                  color: previewMode ? '#fff' : 'var(--color-text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                }}
+              >
+                {previewMode ? '✏️ Edit' : '👁️ Preview'}
+              </button>
+            </div>
           </div>
-          <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-            Use <code>## Heading</code> for section headings, blank lines for new paragraphs, <code>**bold**</code> and <code>*italic*</code> for emphasis.
+          <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+            Use <code>## Heading</code> for section headings, blank lines for new paragraphs, <code>**bold**</code> and <code>*italic*</code> for emphasis. Click <strong>Insert Image</strong> to drop a photo in at your cursor — it'll sit on its own line between paragraphs.
           </p>
+
+          {imageError && (
+            <div style={{
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              fontSize: '0.78rem',
+              marginBottom: '0.75rem',
+            }}>
+              {imageError}
+            </div>
+          )}
 
           {previewMode ? (
             <div style={{
@@ -458,6 +568,7 @@ export default function GuideEditor() {
             </div>
           ) : (
             <textarea
+              ref={textareaRef}
               value={content}
               onChange={e => setContent(e.target.value)}
               placeholder={'## Why this matters\n\nWrite your introduction here...\n\n## Next section\n\nMore content...'}

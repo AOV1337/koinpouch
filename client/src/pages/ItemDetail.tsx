@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import CheckoutModal from '../components/CheckoutModal'
 import SellerBadge from '../components/SellerBadge'
+import Avatar from '../components/Avatar'
+import ReportListingModal from '../components/ReportListingModal'
 
 interface Seller {
   id: string
@@ -62,6 +64,8 @@ export default function ItemDetail() {
   const [bookmarkId, setBookmarkId] = useState<string | null>(null)
   const [bookmarkLoading, setBookmarkLoading] = useState(false)
   const [showCheckout, setShowCheckout] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportSubmitted, setReportSubmitted] = useState(false)
 
   useEffect(() => {
     const fetchListing = async () => {
@@ -85,22 +89,41 @@ export default function ItemDetail() {
           .eq('id', listingData.seller_id)
           .single()
 
-        const { data: sellerProfileData } = await supabase
-          .from('seller_profiles')
-          .select('reputation_score, total_sales, kyc_status')
-          .eq('user_id', listingData.seller_id)
-          .single()
+        const [{ data: sellerProfileData }, { data: reviewRatings }, { count: salesCount }] = await Promise.all([
+          supabase
+            .from('seller_profiles')
+            .select('kyc_status')
+            .eq('user_id', listingData.seller_id)
+            .maybeSingle(),
+          supabase
+            .from('reviews')
+            .select('rating')
+            .eq('seller_id', listingData.seller_id),
+          supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('seller_id', listingData.seller_id),
+        ])
 
-        const { count: reviewCount } = await supabase
-          .from('reviews')
-          .select('*', { count: 'exact', head: true })
-          .eq('seller_id', listingData.seller_id)
+        // Computed live from reviews/orders rather than trusting
+        // seller_profiles.reputation_score/total_sales, which go stale
+        // (see chat note: ReviewForm.tsx's recompute-on-submit never reliably
+        // wrote these columns back).
+        const reviewCount = reviewRatings?.length ?? 0
+        const reputationScore = reviewCount > 0
+          ? reviewRatings!.reduce((sum, r) => sum + r.rating, 0) / reviewCount
+          : 0
 
         setListing({
           ...listingData,
           seller: sellerData ?? null,
           seller_profile: sellerProfileData
-            ? { ...sellerProfileData, review_count: reviewCount ?? 0 }
+            ? {
+                reputation_score: reputationScore,
+                total_sales: salesCount ?? 0,
+                kyc_status: sellerProfileData.kyc_status,
+                review_count: reviewCount,
+              }
             : null,
         })
       } catch (err) {
@@ -158,6 +181,11 @@ export default function ItemDetail() {
   function handlePurchaseSuccess() {
     setShowCheckout(false)
     setListing((prev) => prev ? { ...prev, status: 'sold' } : prev)
+  }
+
+  function handleReportSuccess() {
+    setShowReportModal(false)
+    setReportSubmitted(true)
   }
 
   if (loading) return (
@@ -222,6 +250,16 @@ export default function ItemDetail() {
           buyerId={user.id}
           onClose={() => setShowCheckout(false)}
           onSuccess={handlePurchaseSuccess}
+        />
+      )}
+
+      {showReportModal && user && (
+        <ReportListingModal
+          listingId={listing.id}
+          listingTitle={listing.title}
+          reporterId={user.id}
+          onClose={() => setShowReportModal(false)}
+          onSuccess={handleReportSuccess}
         />
       )}
 
@@ -593,30 +631,24 @@ export default function ItemDetail() {
             </h2>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-              <div style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--color-primary)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontSize: '1.1rem',
-                flexShrink: 0,
-              }}>
-                {listing.seller?.full_name?.charAt(0).toUpperCase() ?? '?'}
-              </div>
+              <Avatar url={listing.seller?.avatar_url} name={listing.seller?.full_name} size={44} />
               <div>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
-                  {listing.seller?.full_name ?? 'Unknown Seller'}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
-                  {listing.seller_profile?.kyc_status === 'approved' && (
-                    <div style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>
-                      ✅ Verified Seller
-                    </div>
+                {/* Name + reputation score + tier badge, all on one line */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
+                    {listing.seller?.full_name ?? 'Unknown Seller'}
+                  </span>
+                  {!!listing.seller_profile && listing.seller_profile.review_count > 0 && (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '2px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      color: 'var(--color-text-secondary)',
+                    }}>
+                      ⭐ {Number(listing.seller_profile.reputation_score).toFixed(1)}
+                    </span>
                   )}
                   {listing.seller_profile && (
                     <SellerBadge
@@ -626,6 +658,11 @@ export default function ItemDetail() {
                     />
                   )}
                 </div>
+                {listing.seller_profile?.kyc_status === 'approved' && (
+                  <div style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600, marginTop: '4px' }}>
+                    ✅ Verified Seller
+                  </div>
+                )}
               </div>
             </div>
 
@@ -671,18 +708,73 @@ export default function ItemDetail() {
             </Link>
           </div>
 
-          {/* Report link */}
-          <div style={{ textAlign: 'center' }}>
-            <button style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--color-text-muted)',
-              fontSize: '0.8rem',
-              cursor: 'pointer',
-              textDecoration: 'underline',
-            }}>
-              Report this listing
-            </button>
+          {/* Report card */}
+          <div style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '16px',
+            padding: '1.25rem 1.5rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>🚩</span>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-text-primary)' }}>
+                See something wrong?
+              </span>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, marginBottom: '1rem' }}>
+              Report this listing if it looks fraudulent, counterfeit, or breaks our marketplace guidelines — our team reviews every report.
+            </p>
+
+            {reportSubmitted ? (
+              <div style={{
+                backgroundColor: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                color: '#16a34a',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                textAlign: 'center',
+              }}>
+                ✅ Report submitted — thank you
+              </div>
+            ) : user ? (
+              <button
+                onClick={() => setShowReportModal(true)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid #ef4444',
+                  backgroundColor: 'transparent',
+                  color: '#ef4444',
+                  fontWeight: 700,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Report this listing
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--color-border)',
+                  color: 'var(--color-text-secondary)',
+                  fontWeight: 600,
+                  fontSize: '0.875rem',
+                  textAlign: 'center',
+                  textDecoration: 'none',
+                }}
+              >
+                Log in to report
+              </Link>
+            )}
           </div>
         </div>
       </div>

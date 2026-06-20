@@ -4,14 +4,9 @@ import DashboardLayout from '../layouts/DashboardLayout'
 import { useProfile } from '../hooks/useProfile'
 import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
-
-const sidebarItems = [
-  { label: 'Overview', path: '/dashboard/buyer', icon: '📊' },
-  { label: 'My Orders', path: '/dashboard/buyer/orders', icon: '📦' },
-  { label: 'Bookmarks', path: '/dashboard/buyer/bookmarks', icon: '🔖' },
-  { label: 'Support', path: '/dashboard/buyer/support', icon: '🎧' },
-  { label: 'Settings', path: '/dashboard/buyer/settings', icon: '⚙️' },
-]
+import { buyerSidebarItems as sidebarItems } from '../lib/buyerSidebar'
+import { useAvatarUrl } from '../hooks/useAvatarUrl'
+import Avatar from '../components/Avatar'
 
 interface Order {
   id: string
@@ -46,6 +41,7 @@ const statusColors: Record<string, string> = {
 export default function BuyerDashboard() {
   const { profile } = useProfile()
   const { user } = useAuth()
+  const [avatarUrl] = useAvatarUrl(user?.id)
 
   const [orders, setOrders] = useState<Order[]>([])
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
@@ -111,12 +107,15 @@ export default function BuyerDashboard() {
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-primary)', marginBottom: '0.25rem' }}>
-            Welcome back, {profile?.full_name?.split(' ')[0] ?? 'Collector'} 👋
-          </div>
-          <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
-            Here's a summary of your activity on Koinpouch.
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Avatar url={avatarUrl} name={profile?.full_name} size={48} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-primary)', marginBottom: '0.25rem' }}>
+              Welcome back, {profile?.full_name?.split(' ')[0] ?? 'Collector'} 👋
+            </div>
+            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
+              Here's a summary of your activity on Koinpouch.
+            </div>
           </div>
         </div>
       </div>
