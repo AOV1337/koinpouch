@@ -7,8 +7,6 @@ import ItemDetail from './pages/ItemDetail'
 import SellerProfile from './pages/SellerProfile'
 import Guides from './pages/Guides'
 import GuideDetail from './pages/GuideDetail'
-import Database from './pages/Database'
-import DatabaseItemDetail from './pages/DatabaseItemDetail'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import BuyerDashboard from './pages/BuyerDashboard'
@@ -19,6 +17,12 @@ import SellerDashboard from './pages/SellerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminTickets from './pages/AdminTickets'
 import AdminKycRequests from './pages/AdminKycRequests'
+import AdminGuidesManager from './pages/AdminGuidesManager'
+import GuideEditor from './pages/GuideEditor'
+import HallOfFame from './pages/HallOfFame'
+import HallOfFameDetail from './pages/HallOfFameDetail'
+import AdminHallOfFameManager from './pages/AdminHallOfFameManager'
+import HallOfFameEditor from './pages/HallOfFameEditor'
 import NotFound from './pages/NotFound'
 import CreateListing from './pages/CreateListing'
 import SellerListings from './pages/SellerListings'
@@ -61,8 +65,8 @@ export default function App() {
         <Route path="/seller/:id" element={<MainLayout><SellerProfile /></MainLayout>} />
         <Route path="/guides" element={<MainLayout><Guides /></MainLayout>} />
         <Route path="/guides/:slug" element={<MainLayout><GuideDetail /></MainLayout>} />
-        <Route path="/database" element={<MainLayout><Database /></MainLayout>} />
-        <Route path="/database/:id" element={<MainLayout><DatabaseItemDetail /></MainLayout>} />
+        <Route path="/hall-of-fame" element={<MainLayout><HallOfFame /></MainLayout>} />
+        <Route path="/hall-of-fame/:id" element={<MainLayout><HallOfFameDetail /></MainLayout>} />
         <Route path="/login" element={<MainLayout><Login /></MainLayout>} />
         <Route path="/register" element={<MainLayout><Register /></MainLayout>} />
 
@@ -103,6 +107,24 @@ export default function App() {
         } />
         <Route path="/dashboard/admin/kyc-requests" element={
           <ProtectedRoute requiredRole="admin"><AdminKycRequests /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/guides" element={
+          <ProtectedRoute requiredRole="admin"><AdminGuidesManager /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/guides/new" element={
+          <ProtectedRoute requiredRole="admin"><GuideEditor /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/guides/:id/edit" element={
+          <ProtectedRoute requiredRole="admin"><GuideEditor /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/hall-of-fame" element={
+          <ProtectedRoute requiredRole="admin"><AdminHallOfFameManager /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/hall-of-fame/new" element={
+          <ProtectedRoute requiredRole="admin"><HallOfFameEditor /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/admin/hall-of-fame/:id/edit" element={
+          <ProtectedRoute requiredRole="admin"><HallOfFameEditor /></ProtectedRoute>
         } />
 
         {/* Fallback */}

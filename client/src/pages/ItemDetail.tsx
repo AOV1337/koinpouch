@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import CheckoutModal from '../components/CheckoutModal'
+import SellerBadge from '../components/SellerBadge'
 
 interface Seller {
   id: string
@@ -14,6 +15,7 @@ interface SellerProfile {
   reputation_score: number
   total_sales: number
   kyc_status: string
+  review_count: number
 }
 
 interface Listing {
@@ -89,10 +91,17 @@ export default function ItemDetail() {
           .eq('user_id', listingData.seller_id)
           .single()
 
+        const { count: reviewCount } = await supabase
+          .from('reviews')
+          .select('*', { count: 'exact', head: true })
+          .eq('seller_id', listingData.seller_id)
+
         setListing({
           ...listingData,
           seller: sellerData ?? null,
-          seller_profile: sellerProfileData ?? null,
+          seller_profile: sellerProfileData
+            ? { ...sellerProfileData, review_count: reviewCount ?? 0 }
+            : null,
         })
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load listing')
@@ -603,11 +612,20 @@ export default function ItemDetail() {
                 <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text-primary)' }}>
                   {listing.seller?.full_name ?? 'Unknown Seller'}
                 </div>
-                {listing.seller_profile?.kyc_status === 'approved' && (
-                  <div style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>
-                    ✅ Verified Seller
-                  </div>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                  {listing.seller_profile?.kyc_status === 'approved' && (
+                    <div style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: 600 }}>
+                      ✅ Verified Seller
+                    </div>
+                  )}
+                  {listing.seller_profile && (
+                    <SellerBadge
+                      averageRating={listing.seller_profile.reputation_score ?? 0}
+                      reviewCount={listing.seller_profile.review_count}
+                      size="small"
+                    />
+                  )}
+                </div>
               </div>
             </div>
 

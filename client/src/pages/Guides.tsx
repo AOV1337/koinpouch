@@ -1,77 +1,19 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 interface Guide {
   id: string
   slug: string
   title: string
-  excerpt: string
+  excerpt: string | null
   category: string
-  topic: string
-  thumbnail_emoji: string
-  author: string
-  published_at: string
-  read_time: number
+  topic: string | null
+  thumbnail_url: string | null
+  author_name: string | null
+  published_at: string | null
+  read_time: number | null
 }
-
-const mockGuides: Guide[] = [
-  {
-    id: '1', slug: 'how-to-spot-fake-pokemon-cards',
-    title: 'How to Spot Fake Pokémon Cards',
-    excerpt: 'Learn the key visual and physical tells that separate genuine Pokémon cards from counterfeits, including light tests, texture checks and print quality analysis.',
-    category: 'cards', topic: 'Spotting Fakes', thumbnail_emoji: '🃏',
-    author: 'Koinpouch Team', published_at: '2026-04-10', read_time: 8,
-  },
-  {
-    id: '2', slug: 'understanding-coin-grading',
-    title: 'Understanding Coin Grading: The Sheldon Scale',
-    excerpt: 'A complete breakdown of the 70-point Sheldon scale used by PCGS and NGC to grade coins, with visual examples for each major grade tier.',
-    category: 'coins', topic: 'Grading & Condition', thumbnail_emoji: '🪙',
-    author: 'Koinpouch Team', published_at: '2026-04-05', read_time: 12,
-  },
-  {
-    id: '3', slug: 'stamp-valuation-guide',
-    title: 'What Makes a Stamp Valuable?',
-    excerpt: 'From printing errors to historical significance — the factors that drive stamp valuations and how to assess what your collection might be worth.',
-    category: 'stamps', topic: 'Valuation', thumbnail_emoji: '✉️',
-    author: 'Koinpouch Team', published_at: '2026-03-28', read_time: 10,
-  },
-  {
-    id: '4', slug: 'storing-figurines-correctly',
-    title: 'How to Store and Display Figurines Without Damage',
-    excerpt: 'UV exposure, humidity, dust — the silent enemies of your figurine collection. A practical guide to long-term preservation and display.',
-    category: 'figurines', topic: 'Storage & Care', thumbnail_emoji: '🗿',
-    author: 'Koinpouch Team', published_at: '2026-03-20', read_time: 6,
-  },
-  {
-    id: '5', slug: 'beginners-guide-to-collecting',
-    title: "The Beginner's Guide to Collecting",
-    excerpt: 'Just starting out? This guide covers the fundamentals every new collector should know — from choosing a focus to avoiding common beginner mistakes.',
-    category: 'general', topic: 'Beginner Guides', thumbnail_emoji: '📚',
-    author: 'Koinpouch Team', published_at: '2026-03-15', read_time: 15,
-  },
-  {
-    id: '6', slug: 'buying-cards-on-marketplaces',
-    title: 'Buying Trading Cards on Online Marketplaces Safely',
-    excerpt: 'Red flags to watch for, questions to ask sellers, and how to protect yourself when buying high-value cards online.',
-    category: 'cards', topic: 'Buying Tips', thumbnail_emoji: '🃏',
-    author: 'Koinpouch Team', published_at: '2026-03-08', read_time: 9,
-  },
-  {
-    id: '7', slug: 'history-of-penny-black',
-    title: "The Penny Black: History of the World's First Stamp",
-    excerpt: 'The story behind the 1840 Penny Black — why it was created, how it changed global communication, and why collectors still pursue it today.',
-    category: 'stamps', topic: 'History & Context', thumbnail_emoji: '✉️',
-    author: 'Koinpouch Team', published_at: '2026-02-28', read_time: 7,
-  },
-  {
-    id: '8', slug: 'photographing-collectibles',
-    title: 'How to Photograph Your Collectibles for Sale',
-    excerpt: 'Good photos sell items faster and at better prices. A practical guide to lighting, angles, backgrounds and equipment for collectible photography.',
-    category: 'general', topic: 'Selling Tips', thumbnail_emoji: '📸',
-    author: 'Koinpouch Team', published_at: '2026-02-15', read_time: 8,
-  },
-]
 
 const itemTypes = ['All', 'cards', 'coins', 'stamps', 'figurines', 'general']
 const topics = ['All', 'Spotting Fakes', 'Grading & Condition', 'Valuation', 'Storage & Care', 'Buying Tips', 'Selling Tips', 'Beginner Guides', 'History & Context']
@@ -93,24 +35,53 @@ const topicColors: Record<string, string> = {
 }
 
 export default function Guides() {
+  const [guides, setGuides] = useState<Guide[]>([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedType, setSelectedType] = useState('All')
   const [selectedTopic, setSelectedTopic] = useState('All')
   const [sort, setSort] = useState('newest')
 
+  const fetchGuides = useCallback(async () => {
+    setLoading(true)
+
+    // Join author name via profiles. Published guides are publicly readable per RLS.
+    const { data, error } = await supabase
+      .from('guides')
+      .select('id, slug, title, excerpt, category, topic, thumbnail_url, published_at, read_time, profiles!guides_author_id_fkey(full_name)')
+      .eq('is_published', true)
+
+    if (!error && data) {
+      const mapped = (data as unknown as (Guide & { profiles: { full_name: string | null }[] | { full_name: string | null } | null })[]).map(g => {
+        const authorProfile = Array.isArray(g.profiles) ? g.profiles[0] : g.profiles
+        return {
+          ...g,
+          author_name: authorProfile?.full_name ?? 'Koinpouch Team',
+        }
+      })
+      setGuides(mapped)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchGuides()
+  }, [fetchGuides])
+
   const filtered = useMemo(() => {
-    let result = [...mockGuides]
+    let result = [...guides]
     if (search) result = result.filter(g =>
       g.title.toLowerCase().includes(search.toLowerCase()) ||
-      g.excerpt.toLowerCase().includes(search.toLowerCase())
+      (g.excerpt ?? '').toLowerCase().includes(search.toLowerCase())
     )
     if (selectedType !== 'All') result = result.filter(g => g.category === selectedType)
     if (selectedTopic !== 'All') result = result.filter(g => g.topic === selectedTopic)
-    if (sort === 'newest') result.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
-    if (sort === 'oldest') result.sort((a, b) => new Date(a.published_at).getTime() - new Date(b.published_at).getTime())
+    if (sort === 'newest') result.sort((a, b) => new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime())
+    if (sort === 'oldest') result.sort((a, b) => new Date(a.published_at ?? 0).getTime() - new Date(b.published_at ?? 0).getTime())
     if (sort === 'az') result.sort((a, b) => a.title.localeCompare(b.title))
     return result
-  }, [search, selectedType, selectedTopic, sort])
+  }, [guides, search, selectedType, selectedTopic, sort])
 
   const filterLabelStyle = {
     fontSize: '0.8rem',
@@ -184,8 +155,26 @@ export default function Guides() {
           <div style={{ marginBottom: '1.5rem' }}>
             <span style={filterLabelStyle}>Topic</span>
             {topics.map(topic => (
-              <button key={topic} onClick={() => setSelectedTopic(topic)} style={filterBtnStyle(selectedTopic === topic)}>
-                {topic}
+              <button
+                key={topic}
+                onClick={() => setSelectedTopic(topic)}
+                style={{
+                  ...filterBtnStyle(selectedTopic === topic),
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {topic !== 'All' && (
+                  <span style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    backgroundColor: topicColors[topic] ?? 'var(--color-text-muted)',
+                    flexShrink: 0,
+                  }} />
+                )}
+                {topic === 'All' ? 'All Topics' : topic}
               </button>
             ))}
           </div>
@@ -248,10 +237,15 @@ export default function Guides() {
           </div>
 
           <div style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem', fontWeight: 500 }}>
-            {filtered.length} guide{filtered.length !== 1 ? 's' : ''} found
+            {loading ? 'Loading…' : `${filtered.length} guide${filtered.length !== 1 ? 's' : ''} found`}
           </div>
 
-          {filtered.length > 0 ? (
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--color-text-muted)' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⏳</div>
+              Loading guides...
+            </div>
+          ) : filtered.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {filtered.map(guide => (
                 <Link key={guide.id} to={`/guides/${guide.slug}`} style={{ textDecoration: 'none' }}>
@@ -288,23 +282,25 @@ export default function Guides() {
                       fontSize: '2rem',
                       flexShrink: 0,
                     }}>
-                      {guide.thumbnail_emoji}
+                      {guide.thumbnail_url ?? '📚'}
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem', alignItems: 'center' }}>
-                        <span style={{
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          color: '#fff',
-                          backgroundColor: topicColors[guide.topic] ?? 'var(--color-primary)',
-                          padding: '2px 8px',
-                          borderRadius: '999px',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                        }}>
-                          {guide.topic}
-                        </span>
+                        {guide.topic && (
+                          <span style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            color: '#fff',
+                            backgroundColor: topicColors[guide.topic] ?? 'var(--color-primary)',
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                          }}>
+                            {guide.topic}
+                          </span>
+                        )}
                         <span style={{
                           fontSize: '0.72rem',
                           fontWeight: 600,
@@ -342,9 +338,11 @@ export default function Guides() {
                       </p>
 
                       <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                        <span>✍️ {guide.author}</span>
-                        <span>📅 {new Date(guide.published_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                        <span>⏱️ {guide.read_time} min read</span>
+                        <span>✍️ {guide.author_name}</span>
+                        {guide.published_at && (
+                          <span>📅 {new Date(guide.published_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                        )}
+                        <span>⏱️ {guide.read_time ?? '—'} min read</span>
                       </div>
                     </div>
                   </div>

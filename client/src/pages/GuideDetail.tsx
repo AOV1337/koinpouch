@@ -1,94 +1,18 @@
-import { useParams, Link } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 interface GuideContent {
+  id: string
   slug: string
   title: string
   category: string
-  topic: string
-  author: string
-  published_at: string
-  read_time: number
-  thumbnail_emoji: string
-  sections: {
-    heading?: string
-    body: string
-    image?: string
-    tip?: string
-  }[]
-}
-
-const mockGuides: Record<string, GuideContent> = {
-  'how-to-spot-fake-pokemon-cards': {
-    slug: 'how-to-spot-fake-pokemon-cards',
-    title: 'How to Spot Fake Pokémon Cards',
-    category: 'cards',
-    topic: 'Spotting Fakes',
-    author: 'Koinpouch Team',
-    published_at: '2026-04-10',
-    read_time: 8,
-    thumbnail_emoji: '🃏',
-    sections: [
-      {
-        heading: 'Why fakes are a real problem',
-        body: 'The Pokémon TCG market has grown enormously over the past decade, with some individual cards fetching tens of thousands of euros at auction. This has made counterfeiting highly profitable, and fake cards have become increasingly sophisticated. Understanding how to identify them is an essential skill for any serious collector or buyer.',
-      },
-      {
-        heading: 'The light test',
-        body: 'One of the simplest and most reliable checks is the light test. Hold the card up to a bright light source. Genuine Pokémon cards have a black layer sandwiched between two layers of paper, which blocks light almost completely. Fake cards often lack this layer and will appear significantly more transparent when held up to light.',
-        tip: 'Use your phone torch for this test. Genuine cards should show almost no light through them.',
-      },
-      {
-        heading: 'Print quality and colour',
-        body: 'Examine the card closely under good lighting. Genuine cards have sharp, clean printing with consistent colour saturation. Counterfeits often show rosette patterns visible to the naked eye — small circular dot patterns from low-quality printing. The colours may also appear washed out, oversaturated, or slightly off compared to a reference card.',
-      },
-      {
-        heading: 'Card texture and feel',
-        body: 'Authentic Pokémon cards have a very specific feel. The front surface is smooth with a slight sheen, while the back has a consistent texture. Fake cards frequently feel flimsy, too stiff, or have a noticeably different texture. The edges of genuine cards are also cleanly cut — counterfeits may have rough or uneven edges.',
-        tip: 'If you can, always compare against a known genuine card of similar age. The difference in feel is often immediately apparent.',
-      },
-      {
-        heading: 'Font and text accuracy',
-        body: 'Examine the card text carefully. Genuine cards use specific proprietary fonts that counterfeiters rarely replicate perfectly. Look for inconsistent spacing, slightly wrong font weights, or text that appears blurry at the edges. The HP number, card name, and attack descriptions are common areas where fakes fall short.',
-      },
-      {
-        heading: 'The rip test — a last resort',
-        body: 'A definitive but destructive test is to rip a corner of the card. Genuine Pokémon cards reveal a black inner layer between two white paper layers. Fakes typically show no black layer or a different layering structure entirely. Only use this test on cards you are certain are fake — it destroys the card permanently.',
-      },
-      {
-        heading: 'When in doubt, get it graded',
-        body: 'If you are purchasing a high-value card and are unsure of its authenticity, consider submitting it to a professional grading service such as PSA, BGS (Beckett), or CGC. These companies authenticate cards and seal them in tamper-evident cases with a grade. A graded card from a reputable service is the gold standard for authenticity verification.',
-      },
-    ],
-  },
-  'understanding-coin-grading': {
-    slug: 'understanding-coin-grading',
-    title: 'Understanding Coin Grading: The Sheldon Scale',
-    category: 'coins',
-    topic: 'Grading & Condition',
-    author: 'Koinpouch Team',
-    published_at: '2026-04-05',
-    read_time: 12,
-    thumbnail_emoji: '🪙',
-    sections: [
-      {
-        heading: 'What is the Sheldon Scale?',
-        body: 'The Sheldon Scale is the standard 70-point grading system used by professional coin grading services worldwide, including PCGS and NGC. Developed by Dr. William Sheldon in 1949, it assigns a numerical grade from 1 (Poor) to 70 (Perfect Uncirculated) to describe a coin\'s condition. Understanding this scale is fundamental to buying and selling coins at fair prices.',
-      },
-      {
-        heading: 'Circulated grades (1–58)',
-        body: 'Coins that have been used in everyday commerce fall into the circulated category. The key grades are: Poor (P-1) — barely identifiable; Fair (F-2) — heavily worn but major details visible; Good (G-4 to G-6) — heavily worn, design clear; Very Good (VG-8 to VG-10) — well worn, main features clear; Fine (F-12 to F-15) — moderate wear on high points; Very Fine (VF-20 to VF-35) — light wear throughout; Extremely Fine (EF-40 to EF-45) — light wear on high points only; About Uncirculated (AU-50 to AU-58) — slight wear on the very highest points.',
-        tip: 'For most collectors, VF-20 or above represents a coin that still has significant visual appeal and detail.',
-      },
-      {
-        heading: 'Uncirculated grades (60–70)',
-        body: 'Mint State (MS) grades from 60 to 70 describe coins that have never been used in circulation. The difference between grades in this range comes down to the number and severity of contact marks, the quality of the luster, and the sharpness of the strike. MS-60 may have many marks and dull luster, while MS-70 is a perfect coin with no marks visible under 5x magnification.',
-      },
-      {
-        heading: 'Why professional grading matters',
-        body: 'The difference in value between grade levels can be dramatic. A coin graded MS-63 might sell for €200, while the same coin in MS-65 could fetch €2,000 or more. Professional grading services provide an objective, third-party assessment that protects both buyers and sellers. PCGS and NGC are the two most respected services globally.',
-      },
-    ],
-  },
+  topic: string | null
+  author_name: string
+  published_at: string | null
+  read_time: number | null
+  thumbnail_url: string | null
+  content: string
 }
 
 const topicColors: Record<string, string> = {
@@ -102,25 +26,107 @@ const topicColors: Record<string, string> = {
   'History & Context': '#ec4899',
 }
 
-const fallbackGuide: GuideContent = {
-  slug: 'not-found',
-  title: 'Guide Not Found',
-  category: 'general',
-  topic: 'Beginner Guides',
-  author: 'Koinpouch Team',
-  published_at: new Date().toISOString(),
-  read_time: 1,
-  thumbnail_emoji: '📚',
-  sections: [
-    {
-      body: 'This guide could not be found. It may have been moved or is not yet published. Please return to the guides page to find what you are looking for.',
-    },
-  ],
+interface ContentBlock {
+  type: 'heading' | 'paragraph'
+  text: string
+  html: string
+}
+
+function parseMarkdown(md: string): ContentBlock[] {
+  const blocks = md.split(/\n\s*\n/).filter(Boolean)
+  return blocks.map(block => {
+    const trimmed = block.trim()
+    if (trimmed.startsWith('## ')) {
+      const text = trimmed.slice(3)
+      return { type: 'heading', text, html: text }
+    }
+    const html = trimmed
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    return { type: 'paragraph', text: trimmed, html }
+  })
 }
 
 export default function GuideDetail() {
   const { slug } = useParams()
-  const guide = (slug && mockGuides[slug]) ? mockGuides[slug] : fallbackGuide
+  const navigate = useNavigate()
+
+  const [guide, setGuide] = useState<GuideContent | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchGuide = useCallback(async () => {
+    if (!slug) return
+    setLoading(true)
+    setError(null)
+
+    const { data, error: fetchError } = await supabase
+      .from('guides')
+      .select('id, slug, title, category, topic, published_at, read_time, thumbnail_url, content, profiles!guides_author_id_fkey(full_name)')
+      .eq('slug', slug)
+      .eq('is_published', true)
+      .single()
+
+    if (fetchError || !data) {
+      setError('This guide could not be found. It may have been moved or is not yet published.')
+      setLoading(false)
+      return
+    }
+
+    const raw = data as unknown as GuideContent & { profiles: { full_name: string | null }[] | { full_name: string | null } | null }
+    const authorProfile = Array.isArray(raw.profiles) ? raw.profiles[0] : raw.profiles
+
+    setGuide({
+      ...raw,
+      author_name: authorProfile?.full_name ?? 'Koinpouch Team',
+    })
+    setLoading(false)
+  }, [slug])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchGuide()
+  }, [fetchGuide])
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⏳</div>
+          <div>Loading guide...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !guide) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📚</div>
+          <div style={{ fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text-primary)' }}>Guide Not Found</div>
+          <div style={{ fontSize: '0.875rem', marginBottom: '1.5rem' }}>{error}</div>
+          <button
+            onClick={() => navigate('/guides')}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: 'var(--color-primary)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            Back to Guides
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  const blocks = parseMarkdown(guide.content)
+  const headings = blocks.filter(b => b.type === 'heading')
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -160,30 +166,47 @@ export default function GuideDetail() {
             padding: '2rem',
             marginBottom: '1.5rem',
           }}>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                color: '#fff',
-                backgroundColor: topicColors[guide.topic] ?? 'var(--color-primary)',
-                padding: '3px 10px',
-                borderRadius: '999px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-              }}>
-                {guide.topic}
-              </span>
-              <span style={{
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                color: 'var(--color-primary)',
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '12px',
                 backgroundColor: 'var(--color-primary-light)',
-                padding: '3px 10px',
-                borderRadius: '999px',
-                textTransform: 'capitalize',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.75rem',
+                flexShrink: 0,
               }}>
-                {guide.category}
-              </span>
+                {guide.thumbnail_url ?? '📚'}
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {guide.topic && (
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: '#fff',
+                    backgroundColor: topicColors[guide.topic] ?? 'var(--color-primary)',
+                    padding: '3px 10px',
+                    borderRadius: '999px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {guide.topic}
+                  </span>
+                )}
+                <span style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  color: 'var(--color-primary)',
+                  backgroundColor: 'var(--color-primary-light)',
+                  padding: '3px 10px',
+                  borderRadius: '999px',
+                  textTransform: 'capitalize',
+                }}>
+                  {guide.category}
+                </span>
+              </div>
             </div>
 
             <h1 style={{
@@ -198,81 +221,48 @@ export default function GuideDetail() {
             </h1>
 
             <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
-              <span>✍️ {guide.author}</span>
-              <span>📅 {new Date(guide.published_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-              <span>⏱️ {guide.read_time} min read</span>
+              <span>✍️ {guide.author_name}</span>
+              {guide.published_at && (
+                <span>📅 {new Date(guide.published_at).toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+              )}
+              <span>⏱️ {guide.read_time ?? '—'} min read</span>
             </div>
           </div>
 
-          {/* Sections */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {guide.sections.map((section, idx) => (
-              <div
-                key={idx}
-                style={{
-                  backgroundColor: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: '16px',
-                  padding: '1.75rem',
-                }}
-              >
-                {section.heading && (
-                  <h2 style={{
+          {/* Content */}
+          <div style={{
+            backgroundColor: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            borderRadius: '16px',
+            padding: '1.75rem 2rem',
+          }}>
+            {blocks.map((block, idx) =>
+              block.type === 'heading' ? (
+                <h2
+                  key={idx}
+                  style={{
                     fontSize: '1.1rem',
                     fontWeight: 800,
                     color: 'var(--color-text-primary)',
-                    marginBottom: '0.875rem',
                     letterSpacing: '-0.01em',
-                  }}>
-                    {section.heading}
-                  </h2>
-                )}
-
-                <p style={{
-                  fontSize: '0.95rem',
-                  color: 'var(--color-text-secondary)',
-                  lineHeight: 1.85,
-                  margin: 0,
-                }}>
-                  {section.body}
-                </p>
-
-                {section.tip && (
-                  <div style={{
-                    marginTop: '1rem',
-                    backgroundColor: 'var(--color-primary-light)',
-                    border: '1px solid var(--color-primary)',
-                    borderRadius: '10px',
-                    padding: '0.875rem 1rem',
-                    display: 'flex',
-                    gap: '0.625rem',
-                    alignItems: 'flex-start',
-                  }}>
-                    <span style={{ fontSize: '1rem', flexShrink: 0 }}>💡</span>
-                    <p style={{
-                      fontSize: '0.875rem',
-                      color: 'var(--color-primary)',
-                      fontWeight: 600,
-                      lineHeight: 1.6,
-                      margin: 0,
-                    }}>
-                      {section.tip}
-                    </p>
-                  </div>
-                )}
-
-                {section.image && (
-                  <div style={{
-                    marginTop: '1rem',
-                    borderRadius: '10px',
-                    overflow: 'hidden',
-                    border: '1px solid var(--color-border)',
-                  }}>
-                    <img src={section.image} alt="" style={{ width: '100%', display: 'block' }} />
-                  </div>
-                )}
-              </div>
-            ))}
+                    margin: idx === 0 ? '0 0 0.875rem' : '1.75rem 0 0.875rem',
+                  }}
+                >
+                  {block.text}
+                </h2>
+              ) : (
+                <p
+                  key={idx}
+                  style={{
+                    fontSize: '0.95rem',
+                    color: 'var(--color-text-secondary)',
+                    lineHeight: 1.85,
+                    margin: '0 0 1.1rem',
+                  }}
+                  dangerouslySetInnerHTML={{ __html: block.html }}
+                />
+              )
+            )}
           </div>
 
           {/* Footer nav */}
@@ -321,36 +311,38 @@ export default function GuideDetail() {
         }}>
 
           {/* Table of contents */}
-          <div style={{
-            backgroundColor: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            borderRadius: '14px',
-            padding: '1.25rem',
-          }}>
+          {headings.length > 0 && (
             <div style={{
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              color: 'var(--color-text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              marginBottom: '0.875rem',
+              backgroundColor: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '14px',
+              padding: '1.25rem',
             }}>
-              Contents
+              <div style={{
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                color: 'var(--color-text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                marginBottom: '0.875rem',
+              }}>
+                Contents
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {headings.map((h, idx) => (
+                  <div key={idx} style={{
+                    fontSize: '0.85rem',
+                    color: 'var(--color-text-secondary)',
+                    lineHeight: 1.4,
+                    paddingLeft: '0.5rem',
+                    borderLeft: '2px solid var(--color-border)',
+                  }}>
+                    {h.text}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {guide.sections.filter(s => s.heading).map((section, idx) => (
-                <div key={idx} style={{
-                  fontSize: '0.85rem',
-                  color: 'var(--color-text-secondary)',
-                  lineHeight: 1.4,
-                  paddingLeft: '0.5rem',
-                  borderLeft: '2px solid var(--color-border)',
-                }}>
-                  {section.heading}
-                </div>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Related action */}
           <div style={{

@@ -14,14 +14,14 @@ const sidebarItems = [
   { label: 'KYC Review', path: '/dashboard/admin/kyc-requests', icon: '🪪' },
   { label: 'Support Tickets', path: '/dashboard/admin/tickets', icon: '🎧' },
   { label: 'User Manager', path: '/dashboard/admin/users', icon: '👥' },
-  { label: 'Item Database', path: '/dashboard/admin/database', icon: '🗄️' },
+  { label: 'Hall of Fame', path: '/dashboard/admin/hall-of-fame', icon: '🏆' },
   { label: 'Guides Manager', path: '/dashboard/admin/guides', icon: '📖' },
   { label: 'Listings', path: '/dashboard/admin/listings', icon: '🏷️' },
   { label: 'Analytics', path: '/dashboard/admin/analytics', icon: '📈' },
 ]
 
 const quickActions = [
-  { label: 'Add Catalog Item', path: '/dashboard/admin/database', icon: '🗄️' },
+  { label: 'Add Hall of Fame Item', path: '/dashboard/admin/hall-of-fame', icon: '🏆' },
   { label: 'Write a Guide', path: '/dashboard/admin/guides', icon: '📖' },
   { label: 'Manage Users', path: '/dashboard/admin/users', icon: '👥' },
   { label: 'View All Listings', path: '/dashboard/admin/listings', icon: '🏷️' },

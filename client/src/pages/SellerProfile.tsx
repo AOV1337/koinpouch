@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import SellerBadge from '../components/SellerBadge'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -18,7 +19,6 @@ interface SellerInfo {
   full_name: string | null
   avatar_url: string | null
   created_at: string
-  // Supabase returns one-to-many joins as arrays even for one-to-one relations
   seller_profiles: SellerProfileRow[] | null
 }
 
@@ -38,9 +38,12 @@ interface Review {
   rating: number
   comment: string | null
   created_at: string
-  // Supabase returns joined profiles as an array; we normalize to [0] after fetch
   buyer: { full_name: string | null }[] | null
 }
+
+// ─── Keyword filter options ────────────────────────────────────────────────
+
+const REVIEW_KEYWORDS = ['Shipping', 'Packaging', 'Authenticity', 'Communication', 'Condition', 'Fast', 'Great']
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,9 +65,14 @@ function StarRating({ rating }: { rating: number }) {
   )
 }
 
+function computeAverage(reviews: Review[]): number {
+  if (reviews.length === 0) return 0
+  return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+}
+
 function AverageRating({ reviews }: { reviews: Review[] }) {
   if (reviews.length === 0) return <span style={{ color: 'var(--color-text-muted)' }}>No reviews yet</span>
-  const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+  const avg = computeAverage(reviews)
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
       <StarRating rating={Math.round(avg)} />
@@ -168,6 +176,7 @@ export default function SellerProfile() {
   const [activeTab, setActiveTab] = useState<'listings' | 'reviews'>('listings')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeKeyword, setActiveKeyword] = useState<string | null>(null)
 
   const fetchSellerData = useCallback(async () => {
     if (!id) return
@@ -175,7 +184,6 @@ export default function SellerProfile() {
     setError(null)
 
     try {
-      // Fetch seller profile + seller_profiles join
       const { data: sellerData, error: sellerError } = await supabase
         .from('profiles')
         .select(`
@@ -198,7 +206,6 @@ export default function SellerProfile() {
       if (sellerError) throw sellerError
       setSeller(sellerData as unknown as SellerInfo)
 
-      // Fetch active listings by this seller
       const { data: listingsData, error: listingsError } = await supabase
         .from('listings')
         .select('id, title, price, currency, category, condition, images, created_at')
@@ -209,7 +216,6 @@ export default function SellerProfile() {
       if (listingsError) throw listingsError
       setListings(listingsData ?? [])
 
-      // Fetch reviews for this seller
       const { data: reviewsData, error: reviewsError } = await supabase
         .from('reviews')
         .select(`
@@ -239,6 +245,11 @@ export default function SellerProfile() {
     fetchSellerData()
   }, [fetchSellerData])
 
+  const filteredReviews = useMemo(() => {
+    if (!activeKeyword) return reviews
+    return reviews.filter(r => r.comment?.toLowerCase().includes(activeKeyword.toLowerCase()))
+  }, [reviews, activeKeyword])
+
   // ── Loading ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -259,6 +270,7 @@ export default function SellerProfile() {
   }
 
   const sp = Array.isArray(seller.seller_profiles) ? (seller.seller_profiles[0] ?? null) : null
+  const liveAverage = computeAverage(reviews)
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -317,6 +329,7 @@ export default function SellerProfile() {
               {seller.full_name ?? 'Anonymous Seller'}
             </h1>
             {sp?.kyc_status && <KycBadge status={sp.kyc_status} />}
+            <SellerBadge averageRating={liveAverage} reviewCount={reviews.length} />
           </div>
 
           <div style={{ marginBottom: '12px' }}>
@@ -416,11 +429,56 @@ export default function SellerProfile() {
               No reviews yet for this seller.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {reviews.map((review) => (
-                <ReviewCard key={review.id} review={review} />
-              ))}
-            </div>
+            <>
+              {/* Keyword filter chips */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                <button
+                  onClick={() => setActiveKeyword(null)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '999px',
+                    border: `1px solid ${activeKeyword === null ? '#f97316' : 'var(--color-border)'}`,
+                    backgroundColor: activeKeyword === null ? '#fff7ed' : 'var(--color-surface)',
+                    color: activeKeyword === null ? '#f97316' : 'var(--color-text-secondary)',
+                    fontWeight: activeKeyword === null ? 700 : 500,
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  All Reviews
+                </button>
+                {REVIEW_KEYWORDS.map(keyword => (
+                  <button
+                    key={keyword}
+                    onClick={() => setActiveKeyword(prev => prev === keyword ? null : keyword)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '999px',
+                      border: `1px solid ${activeKeyword === keyword ? '#f97316' : 'var(--color-border)'}`,
+                      backgroundColor: activeKeyword === keyword ? '#fff7ed' : 'var(--color-surface)',
+                      color: activeKeyword === keyword ? '#f97316' : 'var(--color-text-secondary)',
+                      fontWeight: activeKeyword === keyword ? 700 : 500,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {keyword}
+                  </button>
+                ))}
+              </div>
+
+              {filteredReviews.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--color-text-muted)' }}>
+                  No reviews mention "{activeKeyword}".
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {filteredReviews.map((review) => (
+                    <ReviewCard key={review.id} review={review} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </>
       )}

@@ -57,22 +57,23 @@ export default function ListingCard({ listing }: ListingCardProps) {
           el.style.boxShadow = 'none'
         }}
       >
-        {/* Image */}
+        {/* Image — aspect-ratio instead of a fixed height, so the crop stays
+            consistent whether the grid lands on 2, 3, 4+ columns */}
         <div style={{
-          height: '180px',
+          aspectRatio: '4 / 3',
           backgroundColor: 'var(--color-primary-light)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '4rem',
+          fontSize: '3.5rem',
           flexShrink: 0,
+          overflow: 'hidden',
         }}>
           {listing.images?.[0]
-            ? <img src={listing.images[0]} alt={listing.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : categoryEmoji[listing.category] ?? '📦'
+            ? <img src={listing.images[0]} alt={listing.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            : <span>{categoryEmoji[listing.category] ?? '📦'}</span>
           }
         </div>
-
         {/* Content */}
         <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', flex: 1, gap: '0.4rem' }}>
           <div style={{

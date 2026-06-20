@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import ListingCard from '../components/ListingCard'
 import type { Listing } from '../components/ListingCard'
+import { CATEGORY_META, CONDITION_META, type ListingCategory, type ListingCondition } from '../lib/listingMeta'
 
 const categories = ['All', 'cards', 'coins', 'stamps', 'figurines']
 const conditions = ['All', 'mint', 'near_mint', 'good', 'fair', 'poor']
@@ -16,12 +18,36 @@ export default function Browse() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('All')
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    const cat = searchParams.get('category')
+    return cat && categories.includes(cat) ? cat : 'All'
+  })
   const [selectedCondition, setSelectedCondition] = useState('All')
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [sort, setSort] = useState('newest')
+
+  // Keeps the filter in sync with the URL — covers both the initial load
+  // (e.g. arriving from the home page category buttons) and any later
+  // change to the query string while this page stays mounted.
+  useEffect(() => {
+    const cat = searchParams.get('category')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedCategory(cat && categories.includes(cat) ? cat : 'All')
+  }, [searchParams])
+
+  function handleCategorySelect(cat: string) {
+    setSelectedCategory(cat)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (cat === 'All') next.delete('category')
+      else next.set('category', cat)
+      return next
+    })
+  }
 
   useEffect(() => {
     const fetchListings = async () => {
@@ -103,7 +129,6 @@ export default function Browse() {
     fontWeight: active ? 700 : 500,
     fontSize: '0.9rem',
     cursor: 'pointer' as const,
-    textTransform: 'capitalize' as const,
   })
 
   return (
@@ -134,29 +159,48 @@ export default function Browse() {
         {/* Category */}
         <div style={filterSectionStyle}>
           <span style={filterLabelStyle}>Category</span>
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              style={filterBtnStyle(selectedCategory === cat)}
-            >
-              {cat === 'All' ? 'All Categories' : cat}
-            </button>
-          ))}
+          {categories.map(cat => {
+            const meta = cat !== 'All' ? CATEGORY_META[cat as ListingCategory] : null
+            return (
+              <button
+                key={cat}
+                onClick={() => handleCategorySelect(cat)}
+                style={filterBtnStyle(selectedCategory === cat)}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span>{cat === 'All' ? '🗂️' : meta?.emoji}</span>
+                  {cat === 'All' ? 'All Categories' : meta?.label ?? cat}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* Condition */}
         <div style={filterSectionStyle}>
           <span style={filterLabelStyle}>Condition</span>
-          {conditions.map(cond => (
-            <button
-              key={cond}
-              onClick={() => setSelectedCondition(cond)}
-              style={filterBtnStyle(selectedCondition === cond)}
-            >
-              {cond === 'All' ? 'All Conditions' : cond.replace('_', ' ')}
-            </button>
-          ))}
+          {conditions.map(cond => {
+            const meta = cond !== 'All' ? CONDITION_META[cond as ListingCondition] : null
+            return (
+              <button
+                key={cond}
+                onClick={() => setSelectedCondition(cond)}
+                style={filterBtnStyle(selectedCondition === cond)}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    backgroundColor: cond === 'All' ? 'var(--color-text-muted)' : meta?.color,
+                    flexShrink: 0,
+                    display: 'inline-block',
+                  }} />
+                  {cond === 'All' ? 'All Conditions' : meta?.label ?? cond.replace('_', ' ')}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
         {/* Price range */}
@@ -202,7 +246,7 @@ export default function Browse() {
         {/* Reset */}
         <button
           onClick={() => {
-            setSelectedCategory('All')
+            handleCategorySelect('All')
             setSelectedCondition('All')
             setMinPrice('')
             setMaxPrice('')
